@@ -1,0 +1,98 @@
+.scan-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+}
+
+.viewfinder {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  max-width: 340px;
+  width: 100%;
+  margin: 12px auto 0;
+  border-radius: var(--radius-lg);
+  background: var(--ink-800);
+  display: grid;
+  place-items: center;
+}
+
+.viewfinder-hint {
+  color: var(--text-on-ink-muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+.corner {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--teal-500);
+}
+
+.corner-tl {
+  top: 14px;
+  left: 14px;
+  border-right: none;
+  border-bottom: none;
+  border-top-left-radius: 10px;
+}
+
+.corner-tr {
+  top: 14px;
+  right: 14px;
+  border-left: none;
+  border-bottom: none;
+  border-top-right-radius: 10px;
+}
+
+.corner-bl {
+  bottom: 14px;
+  left: 14px;
+  border-right: none;
+  border-top: none;
+  border-bottom-left-radius: 10px;
+}
+
+.corner-br {
+  bottom: 14px;
+  right: 14px;
+  border-left: none;
+  border-top: none;
+  border-bottom-right-radius: 10px;
+}
+
+.scan-result-placeholder {
+  background: var(--ink-900);
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  text-align: center;
+}
+
+.scan-result-placeholder p {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--text-on-ink-muted);
+}
+
+.scan-note {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--teal-500);
+}
+
+.manual-checkin-btn {
+  margin-top: auto;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: var(--text-on-ink);
+  border-radius: var(--radius-sm);
+  padding: 13px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.manual-checkin-btn:disabled {
+  opacity: 0.5;
+}

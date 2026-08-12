@@ -1,0 +1,48 @@
+/* ==========================================================================
+   Design tokens — QR Attendance / Admin
+   Palette: "boarding gate" — dark ink sidebar, teal check-in accent
+   ========================================================================== */
+:root {
+  /* Color — ink & surfaces */
+  --ink-950: #0F1320;
+  --ink-900: #161B2C;
+  --ink-800: #1F2740;
+  --ink-700: #2B3555;
+  --surface-0: #FFFFFF;
+  --surface-50: #F6F7FB;
+  --surface-100: #ECEFF6;
+  --border: #E2E5F0;
+
+  /* Color — brand & status */
+  --brand-500: #5B5FEF;   /* indigo — primary actions, admin identity */
+  --brand-600: #4548D6;
+  --teal-500: #16C8A6;    /* check-in / success / "live" accent */
+  --teal-050: #E4FBF6;
+  --amber-500: #F5A524;   /* pending / warning */
+  --amber-050: #FEF4E2;
+  --red-500: #EF4444;     /* error / revoked */
+  --red-050: #FDECEC;
+
+  /* Text */
+  --text-primary: #171A2B;
+  --text-secondary: #5A6079;
+  --text-muted: #8A90A6;
+  --text-on-ink: #F2F3FA;
+  --text-on-ink-muted: #9BA1C4;
+
+  /* Type */
+  --font-display: "Sora", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* Layout */
+  --sidebar-w: 248px;
+  --header-h: 64px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --shadow-sm: 0 1px 2px rgba(15, 19, 32, 0.06);
+  --shadow-md: 0 8px 24px rgba(15, 19, 32, 0.08);
+
+  --transition: 160ms ease;
+}
