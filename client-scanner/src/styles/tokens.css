@@ -1,0 +1,37 @@
+/* ==========================================================================
+   Design tokens — QR Attendance / Scanner
+   Same family as client-admin, tuned for a full-screen mobile viewfinder.
+   ========================================================================== */
+:root {
+  --ink-950: #0F1320;
+  --ink-900: #161B2C;
+  --ink-800: #1F2740;
+  --surface-0: #FFFFFF;
+  --surface-50: #F6F7FB;
+  --border: #E2E5F0;
+
+  --brand-500: #5B5FEF;
+  --teal-500: #16C8A6;
+  --teal-050: #E4FBF6;
+  --amber-500: #F5A524;
+  --amber-050: #FEF4E2;
+  --red-500: #EF4444;
+  --red-050: #FDECEC;
+
+  --text-primary: #171A2B;
+  --text-secondary: #5A6079;
+  --text-muted: #8A90A6;
+  --text-on-ink: #F2F3FA;
+  --text-on-ink-muted: #9BA1C4;
+
+  --font-display: "Sora", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --header-h: 60px;
+  --tabbar-h: 64px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --transition: 160ms ease;
+}
