@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 // Import Model Attendee của MongoDB
 const Attendee = require('./models/Attendee.model');
+const attendeeRoutes = require('./routes/attendee.routes');
 
 const app = express();
 
@@ -25,5 +26,8 @@ app.get('/api/attendees', async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
+// Route con /api/attendees/:id/qr (và các route attendee khác về sau)
+app.use('/api/attendees', attendeeRoutes);
 
 module.exports = app;
