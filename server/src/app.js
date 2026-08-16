@@ -1,8 +1,11 @@
 const express = require('express');
 const cors = require('cors');
-// Import Model Attendee của MongoDB
 const Attendee = require('./models/Attendee.model');
 const attendeeRoutes = require('./routes/attendee.routes');
+const eventRoutes = require('./routes/event.routes');
+const ticketTypeRoutes = require('./routes/ticketType.routes');
+const authRoutes = require('./routes/auth.routes');
+const checkinRoutes = require('./routes/checkin.routes');
 
 const app = express();
 
@@ -26,6 +29,18 @@ app.get('/api/attendees', async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 });
+
+// Route auth
+app.use('/api/auth', authRoutes);
+
+// Route sự kiện
+app.use('/api/events', eventRoutes);
+
+// Route loại vé
+app.use('/api/tickettypes', ticketTypeRoutes);
+
+// Route check-in
+app.use('/api/checkin', checkinRoutes);
 
 // Route con /api/attendees/:id/qr (và các route attendee khác về sau)
 app.use('/api/attendees', attendeeRoutes);
