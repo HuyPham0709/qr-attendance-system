@@ -1,0 +1,32 @@
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.page-header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.page-header p {
+  margin: 6px 0 0;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.page-header button,
+.page-header .btn-primary {
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 600;
+  background: var(--brand-500);
+  color: white;
+  border: none;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.16);
+}

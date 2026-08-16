@@ -1,0 +1,69 @@
+.scanner-header {
+  height: var(--header-h);
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--ink-900);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.scanner-header-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.scanner-header-event {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.scanner-header-gate {
+  font-size: 12px;
+  color: var(--text-on-ink-muted);
+}
+
+.scanner-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.scanner-header-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--teal-500);
+  background: rgba(22, 200, 166, 0.12);
+  border-radius: 999px;
+  padding: 6px 10px;
+}
+
+.scanner-header-status.is-offline {
+  color: var(--amber-500);
+  background: rgba(245, 165, 36, 0.14);
+}
+
+.scanner-logout-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.scanner-logout-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 1);
+}
+
