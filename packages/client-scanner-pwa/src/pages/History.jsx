@@ -1,4 +1,4 @@
-import { useScan } from '../contexts/ScanContext';
+import { useScan } from '../contexts/ScanContext.jsx';
 import "./History.css";
 
 function History() {

@@ -2,15 +2,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      // Offline-first scanner: cache the app shell so gate staff can keep
-      // scanning even when the venue Wi-Fi drops (queued syncs handled in
-      // src via Dexie/IndexedDB, wired up in Tuần 6).
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
       },
@@ -45,4 +41,9 @@ export default defineConfig({
       },
     }),
   ],
+  server: {
+    proxy: {
+      '/api': 'http://localhost:5000',
+    },
+  },
 })

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useScan } from '../contexts/ScanContext';
+import { useScan } from '../contexts/ScanContext.jsx';
 import "./Scan.css";
 
 function Scan() {

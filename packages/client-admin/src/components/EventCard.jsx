@@ -1,5 +1,5 @@
 import { Calendar, MapPin, Users, Eye, Edit, Trash2 } from 'lucide-react';
-import { STATUS_COLORS, STATUS_LABELS } from '../constants/mockData';
+import { STATUS_COLORS, STATUS_LABELS } from '../constants/mockData.js';
 import './EventCard.css';
 
 export default function EventCard({ event }) {

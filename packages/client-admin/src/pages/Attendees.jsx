@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { Search, Upload, Download, Plus, Filter, ChevronDown, CheckCircle2, AlertCircle, Clock, XCircle } from 'lucide-react';
+import { Search, Upload, Download, Plus, Filter, CheckCircle2, AlertCircle, Clock, XCircle } from 'lucide-react';
 import { MOCK_ATTENDEES } from "../constants/mockData.js";
+import "./Attendees.css";
 
 const statusConfig = {
-  checked_in: { label: 'Đã check-in', color: '#16A34A', bg: '#F0FDF4', icon: CheckCircle2 },
-  registered: { label: 'Đã đăng ký', color: '#0891B2', bg: '#ECFEFF', icon: Clock },
-  cancelled: { label: 'Hủy bỏ', color: '#DC2626', bg: '#FEF2F2', icon: XCircle },
-  no_show: { label: 'Vắng mặt', color: '#D97706', bg: '#FFFBEB', icon: AlertCircle }
+  checked_in: { label: 'Đã check-in', color: '#16A34A', bg: '#F0FDF4', icon: CheckCircle2, className: 'status-success' },
+  registered: { label: 'Đã đăng ký', color: '#0891B2', bg: '#ECFEFF', icon: Clock, className: 'status-registered' },
+  cancelled: { label: 'Hủy bỏ', color: '#DC2626', bg: '#FEF2F2', icon: XCircle, className: 'status-cancelled' },
+  no_show: { label: 'Vắng mặt', color: '#D97706', bg: '#FFFBEB', icon: AlertCircle, className: 'status-no-show' }
 };
 
 function Attendees() {
@@ -22,203 +23,104 @@ function Attendees() {
     a.phone.includes(search)
   );
 
-  return (
-    <>
-      <div style={{ marginBottom: '24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-          <div>
-            <h1 style={{ fontSize: '28px', fontWeight: 700, margin: '0 0 6px', color: '#0F172A', letterSpacing: '-0.02em' }}>
-              Người tham dự
-            </h1>
-            <p style={{ fontSize: '14px', color: '#64748B', margin: 0 }}>
-              {total.toLocaleString()} tổng · {checkedIn.toLocaleString()} đã check-in
-            </p>
-          </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 14px',
-              borderRadius: '8px',
-              background: '#FFFFFF',
-              border: '1px solid #E2E8F0',
-              color: '#64748B',
-              fontSize: '13px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              transition: 'all 160ms ease'
-            }}>
-              <Upload size={14} /> Import
-            </button>
-            <button style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 14px',
-              borderRadius: '8px',
-              background: '#FFFFFF',
-              border: '1px solid #E2E8F0',
-              color: '#64748B',
-              fontSize: '13px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              transition: 'all 160ms ease'
-            }}>
-              <Download size={14} /> Xuất
-            </button>
-            <button style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 14px',
-              borderRadius: '8px',
-              background: '#2563EB',
-              border: 'none',
-              color: '#FFFFFF',
-              fontSize: '13px',
-              fontWeight: 600,
-              cursor: 'pointer',
-              transition: 'all 160ms ease'
-            }}>
-              <Plus size={14} /> Thêm
-            </button>
-          </div>
-        </div>
+  const getTicketClass = (type) => {
+    if (type === 'VIP') return 'ticket-badge vip';
+    if (type === 'Partner') return 'ticket-badge partner';
+    return 'ticket-badge standard';
+  };
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
-          {[
-            { label: 'Tổng số', value: total, color: '#0F172A' },
-            { label: 'Đã check-in', value: checkedIn, color: '#16A34A' },
-            { label: 'Chờ xác nhận', value: registered, color: '#0891B2' },
-            { label: 'Vắng mặt', value: noShow, color: '#D97706' }
-          ].map((stat, idx) => (
-            <div key={idx} style={{
-              background: '#FFFFFF',
-              border: '1px solid #E2E8F0',
-              borderRadius: '10px',
-              padding: '12px'
-            }}>
-              <div style={{ fontSize: '11px', color: '#64748B', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 500 }}>
-                {stat.label}
-              </div>
-              <strong style={{ fontSize: '24px', fontWeight: 700, color: stat.color }}>{stat.value}</strong>
-            </div>
-          ))}
+  return (
+    <div className="attendees-page">
+      <div className="attendees-header">
+        <div>
+          <h1>Người tham dự</h1>
+          <p className="subtitle">
+            {total.toLocaleString()} tổng · {checkedIn.toLocaleString()} đã check-in
+          </p>
+        </div>
+        <div className="attendees-actions">
+          <button className="btn" type="button">
+            <Upload size={14} /> Import
+          </button>
+          <button className="btn" type="button">
+            <Download size={14} /> Xuất
+          </button>
+          <button className="btn btn-primary" type="button">
+            <Plus size={14} /> Thêm
+          </button>
         </div>
       </div>
 
-      <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '12px', overflow: 'hidden' }}>
-        <div style={{ padding: '16px', borderBottom: '1px solid #F1F5F9', display: 'flex', gap: '12px' }}>
-          <div style={{ position: 'relative', flex: 1, maxWidth: '360px' }}>
-            <Search size={15} style={{
-              position: 'absolute',
-              left: 12,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: '#94A3B8'
-            }} />
+      <div className="attendees-stats">
+        {[
+          { label: 'Tổng số', value: total, color: 'var(--text-primary)' },
+          { label: 'Đã check-in', value: checkedIn, color: 'var(--success-500)' },
+          { label: 'Chờ xác nhận', value: registered, color: 'var(--info-500)' },
+          { label: 'Vắng mặt', value: noShow, color: 'var(--warning-500)' }
+        ].map((stat, idx) => (
+          <div key={idx} className="stat-card">
+            <div className="stat-card-label">{stat.label}</div>
+            <strong className="stat-card-value" style={{ color: stat.color }}>{stat.value}</strong>
+          </div>
+        ))}
+      </div>
+
+      <div className="attendees-table-wrap">
+        <div className="attendees-toolbar">
+          <div className="search-wrap">
+            <Search size={15} className="search-icon" />
             <input
               type="text"
+              className="search-input"
               placeholder="Tìm kiếm theo tên, email, số điện thoại..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              style={{
-                width: '100%',
-                height: '36px',
-                paddingLeft: '32px',
-                paddingRight: '12px',
-                border: '1px solid #E2E8F0',
-                borderRadius: '8px',
-                fontSize: '13px',
-                color: '#0F172A',
-                outline: 'none'
-              }}
             />
           </div>
-          <button style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '8px 12px',
-            fontSize: '12px',
-            fontWeight: 500,
-            background: '#FFFFFF',
-            border: '1px solid #E2E8F0',
-            borderRadius: '8px',
-            cursor: 'pointer',
-            color: '#64748B'
-          }}>
+          <button className="filter-btn" type="button">
             <Filter size={13} /> Lọc
           </button>
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-          <thead style={{ background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
+
+        <table className="attendees-table">
+          <thead>
             <tr>
-              <th style={{ textAlign: 'left', padding: '12px 16px', fontSize: '12px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Họ tên</th>
-              <th style={{ textAlign: 'left', padding: '12px 16px', fontSize: '12px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Email</th>
-              <th style={{ textAlign: 'left', padding: '12px 16px', fontSize: '12px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Sự kiện</th>
-              <th style={{ textAlign: 'left', padding: '12px 16px', fontSize: '12px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Loại vé</th>
-              <th style={{ textAlign: 'left', padding: '12px 16px', fontSize: '12px', fontWeight: 600, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Trạng thái</th>
+              <th>Họ tên</th>
+              <th>Email</th>
+              <th>Sự kiện</th>
+              <th>Loại vé</th>
+              <th>Trạng thái</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.map((attendee, idx) => {
+            {filtered.map((attendee) => {
               const status = statusConfig[attendee.status] || statusConfig.registered;
               const StatusIcon = status.icon;
               return (
-                <tr key={attendee.id} style={{
-                  borderTop: '1px solid #F1F5F9',
-                  transition: 'background 160ms ease'
-                }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#F8FBFF'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = ''}>
-                  <td style={{ padding: '12px 16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: '50%',
-                        background: '#2563EB',
-                        color: '#fff',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '12px',
-                        fontWeight: 700
-                      }}>
+                <tr key={attendee.id}>
+                  <td>
+                    <div className="attendee-cell">
+                      <span className="attendee-avatar">
                         {attendee.name.charAt(0)}
-                      </div>
+                      </span>
                       <div>
-                        <p style={{ fontSize: '13px', fontWeight: 500, color: '#0F172A', margin: 0 }}>{attendee.name}</p>
-                        <p style={{ fontSize: '12px', color: '#94A3B8', margin: 0 }}>{attendee.phone}</p>
+                        <p className="attendee-name">{attendee.name}</p>
+                        <p className="attendee-phone">{attendee.phone}</p>
                       </div>
                     </div>
                   </td>
-                  <td style={{ padding: '12px 16px', fontSize: '13px', color: '#64748B' }}>{attendee.email}</td>
-                  <td style={{ padding: '12px 16px', fontSize: '13px', color: '#64748B' }}>{attendee.eventName}</td>
-                  <td style={{ padding: '12px 16px' }}>
-                    <span style={{
-                      fontSize: '12px',
-                      fontWeight: 500,
-                      padding: '4px 8px',
-                      borderRadius: '6px',
-                      background: attendee.ticketType === 'VIP' ? '#F5F3FF' : attendee.ticketType === 'Partner' ? '#FFF7ED' : '#F8FAFC',
-                      color: attendee.ticketType === 'VIP' ? '#7C3AED' : attendee.ticketType === 'Partner' ? '#EA580C' : '#64748B'
-                    }}>
+                  <td>{attendee.email}</td>
+                  <td>{attendee.eventName}</td>
+                  <td>
+                    <span className={getTicketClass(attendee.ticketType)}>
                       {attendee.ticketType}
                     </span>
                   </td>
-                  <td style={{ padding: '12px 16px' }}>
-                    <span style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      padding: '6px 10px',
-                      borderRadius: '12px',
-                      background: status.bg,
-                      color: status.color,
-                      fontSize: '12px',
-                      fontWeight: 600
-                    }}>
+                  <td>
+                    <span
+                      className="status-badge"
+                      style={{ background: status.bg, color: status.color }}
+                    >
                       <StatusIcon size={12} /> {status.label}
                     </span>
                   </td>
@@ -227,8 +129,14 @@ function Attendees() {
             })}
           </tbody>
         </table>
+
+        {filtered.length === 0 && (
+          <div className="empty-state">
+            <p>Không tìm thấy người tham dự phù hợp</p>
+          </div>
+        )}
       </div>
-    </>
+    </div>
   );
 }
 
