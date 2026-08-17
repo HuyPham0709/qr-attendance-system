@@ -1,40 +1,39 @@
 const express = require('express');
 const cors = require('cors');
-const cookieParser = require('cookie-parser'); // 0. BẮT BUỘC để đọc được cookie gửi lên (req.cookies)
-// Import Model Attendee của MongoDB
-const Attendee = require('./models/Attendee.model');
+const cookieParser = require('cookie-parser');
+
+// Middlewares
+const errorHandler = require('./middlewares/errorHandler.middleware');
+
+// Routes
 const attendeeRoutes = require('./routes/attendee.routes');
-// 1. Thêm import authRoutes
+const eventRoutes = require('./routes/event.routes');
+const ticketTypeRoutes = require('./routes/ticketType.routes');
 const authRoutes = require('./routes/auth.routes');
+const checkinRoutes = require('./routes/checkin.routes');
 
 const app = express();
 
-// Middlewares
+// Global Middlewares
 app.use(cors());
 app.use(express.json());
-app.use(cookieParser()); // 0b. Phải đăng ký TRƯỚC mọi route cần đọc req.cookies
+app.use(cookieParser());
 
 // Health check route
 app.get('/', (req, res) => {
   res.send('Server QR Attendance đang hoạt động!');
 });
 
-// API lấy danh sách Attendees từ MongoDB
-app.get('/api/attendees', async (req, res) => {
-  try {
-    // Truy vấn tất cả người tham dự trong MongoDB
-    const attendees = await Attendee.find();
-    res.json({ success: true, data: attendees });
-  } catch (error) {
-    console.error('Lỗi server khi lấy danh sách attendees:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// Route con /api/attendees/:id/qr (và các route attendee khác về sau)
-app.use('/api/attendees', attendeeRoutes);
-
-// 2. Thêm đăng ký route auth ở đây
+// Đăng ký các Route API chính
 app.use('/api/auth', authRoutes);
+app.use('/api/events', eventRoutes);
+app.use('/api/tickettypes', ticketTypeRoutes);
+app.use('/api/checkin', checkinRoutes);
+app.use('/api/attendees', attendeeRoutes); // Đã xóa đoạn app.get('/api/attendees') viết đè trước đó
+
+// Middleware xử lý lỗi tập trung (Luôn đặt ở CUỐI CÙNG sau các routes)
+if (typeof errorHandler === 'function') {
+  app.use(errorHandler);
+}
 
 module.exports = app;

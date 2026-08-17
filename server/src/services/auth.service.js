@@ -1,5 +1,5 @@
-const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const User = require('../models/User.model');
 const RefreshToken = require('../models/RefreshToken.model');
 const {
@@ -9,34 +9,57 @@ const {
   hashToken
 } = require('../utils/token.util');
 
+const ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000;
+const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 phút
 const SLIDING_DAYS = Number(process.env.REFRESH_TOKEN_SLIDING_DAYS || 7);
 const ABSOLUTE_DAYS = Number(process.env.REFRESH_TOKEN_ABSOLUTE_DAYS || 30);
 
-// Hash bcrypt hợp lệ tính sẵn 1 lần lúc khởi động, dùng để so sánh khi
-// email không tồn tại trong DB - giữ thời gian phản hồi tương đương trường
-// hợp "email đúng nhưng sai mật khẩu", tránh lộ thông tin email nào tồn tại
-// qua chênh lệch thời gian phản hồi (timing attack / user enumeration).
+// Hash bcrypt giả lập tính sẵn để tránh lộ thông tin qua chênh lệch thời gian phản hồi (Timing Attack)
 const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-constant-time-compare', 10);
 
+// Lớp AuthError tương thích linh hoạt với cả 2 kiểu truyền tham số từ 2 nhánh
 class AuthError extends Error {
-  constructor(message, status = 401, code) {
+  constructor(messageOrStatus, statusOrMessage = 401, code = 'AUTH_ERROR') {
+    let message, status;
+    if (typeof messageOrStatus === 'number') {
+      status = messageOrStatus;
+      message = statusOrMessage;
+    } else {
+      message = messageOrStatus;
+      status = statusOrMessage;
+    }
     super(message);
+    this.name = 'AuthError';
     this.status = status;
     this.code = code;
   }
+}
+
+function sanitizeUser(user) {
+  if (!user) return null;
+
+  return {
+    id: user._id.toString(),
+    organizationId: user.organizationId ? user.organizationId.toString() : null,
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    isActive: user.isActive,
+    assignedEvents: user.assignedEvents || []
+  };
 }
 
 async function issueTokenPair({ user, family, familyExpiresAt, ip, userAgent }) {
   const accessToken = signAccessToken({
     userId: user._id.toString(),
     role: user.role,
-    organizationId: user.organizationId.toString()
+    organizationId: user.organizationId ? user.organizationId.toString() : null
   });
 
   const slidingExpiresAt = new Date(Date.now() + SLIDING_DAYS * 86400000);
-  // Hạn thực tế = sớm hơn giữa (trượt theo hoạt động) và (trần tuyệt đối của cả family).
   const expiresAt = slidingExpiresAt < familyExpiresAt ? slidingExpiresAt : familyExpiresAt;
   const expiresInSeconds = Math.max(60, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
 
@@ -67,16 +90,21 @@ async function issueTokenPair({ user, family, familyExpiresAt, ip, userAgent }) 
 }
 
 async function login({ email, password, ip, userAgent }) {
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail || !password) {
+    throw new AuthError(400, 'Email và mật khẩu là bắt buộc', 'INVALID_INPUT');
+  }
+
   const genericError = () => new AuthError('Email hoặc mật khẩu không đúng', 401, 'INVALID_CREDENTIALS');
 
-  const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+passwordHash');
+  const user = await User.findOne({ email: normalizedEmail }).select('+passwordHash');
 
   if (!user) {
     await bcrypt.compare(password, DUMMY_HASH);
     throw genericError();
   }
 
-  if (user.isLocked()) {
+  if (typeof user.isLocked === 'function' && user.isLocked()) {
     const minutesLeft = Math.ceil((user.lockUntil.getTime() - Date.now()) / 60000);
     throw new AuthError(
       `Tài khoản tạm khoá do đăng nhập sai nhiều lần. Thử lại sau ${minutesLeft} phút.`,
@@ -86,13 +114,13 @@ async function login({ email, password, ip, userAgent }) {
   }
 
   if (!user.isActive) {
-    throw new AuthError('Tài khoản đã bị vô hiệu hoá', 403, 'ACCOUNT_DISABLED');
+    throw new AuthError('Tài khoản đã bị vô hiệu hóa', 403, 'ACCOUNT_DISABLED');
   }
 
   const passwordOk = await bcrypt.compare(password, user.passwordHash);
 
   if (!passwordOk) {
-    user.failedLoginAttempts += 1;
+    user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
     if (user.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
       user.lockUntil = new Date(Date.now() + LOCK_DURATION_MS);
       user.failedLoginAttempts = 0;
@@ -105,7 +133,7 @@ async function login({ email, password, ip, userAgent }) {
   user.lockUntil = null;
   await user.save();
 
-  const family = crypto.randomUUID();
+  const family = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
   const familyExpiresAt = new Date(Date.now() + ABSOLUTE_DAYS * 86400000);
 
   const { accessToken, refreshToken, refreshMaxAgeMs } = await issueTokenPair({
@@ -116,19 +144,13 @@ async function login({ email, password, ip, userAgent }) {
     accessToken,
     refreshToken,
     refreshMaxAgeMs,
-    user: {
-      id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      organizationId: user.organizationId
-    }
+    user: sanitizeUser(user)
   };
 }
 
 async function refresh({ refreshToken, ip, userAgent }) {
   if (!refreshToken) {
-    throw new AuthError('Thiếu refresh token', 401, 'NO_REFRESH_TOKEN');
+    throw new AuthError('Thiếu refresh token', 401, 'MISSING_REFRESH_TOKEN');
   }
 
   let payload;
@@ -138,16 +160,15 @@ async function refresh({ refreshToken, ip, userAgent }) {
     throw new AuthError('Refresh token không hợp lệ hoặc đã hết hạn', 401, 'INVALID_REFRESH_TOKEN');
   }
 
-  const tokenHash = hashToken(payload.jti);
+  const tokenHash = hashToken(payload.jti || refreshToken);
   const record = await RefreshToken.findOne({ tokenHash });
 
   if (!record) {
-    throw new AuthError('Refresh token không hợp lệ', 401, 'INVALID_REFRESH_TOKEN');
+    throw new AuthError('Refresh token không hợp lệ hoặc không tồn tại', 401, 'INVALID_REFRESH_TOKEN');
   }
 
   if (record.revokedAt) {
-    // Token đã bị revoke nhưng vẫn được đem ra dùng lại -> dấu hiệu bị đánh cắp.
-    // Phản ứng: khoá toàn bộ family (mọi thiết bị của phiên đăng nhập đó) ngay lập tức.
+    // Phát hiện token bị tái sử dụng -> thu hồi toàn bộ token family để bảo vệ người dùng
     await RefreshToken.updateMany(
       { family: record.family, revokedAt: null },
       { $set: { revokedAt: new Date() } }
@@ -188,11 +209,20 @@ async function logout({ refreshToken }) {
   if (!refreshToken) return;
   try {
     const payload = verifyRefreshToken(refreshToken);
-    const tokenHash = hashToken(payload.jti);
+    const tokenHash = hashToken(payload.jti || refreshToken);
     await RefreshToken.updateOne({ tokenHash }, { $set: { revokedAt: new Date() } });
   } catch {
-    // Token không hợp lệ/đã hết hạn -> coi như đã đăng xuất, không cần báo lỗi cho client.
+    const tokenHash = hashToken(refreshToken);
+    await RefreshToken.updateOne({ tokenHash }, { $set: { revokedAt: new Date() } });
   }
 }
 
-module.exports = { login, refresh, logout, AuthError };
+module.exports = {
+  AuthError,
+  sanitizeUser,
+  login,
+  refresh,
+  logout,
+  ACCESS_TOKEN_TTL_MS,
+  REFRESH_TOKEN_TTL_MS
+};
