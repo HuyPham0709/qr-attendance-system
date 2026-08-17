@@ -12,10 +12,23 @@
 
 const express = require('express');
 const { getAttendeeQr, revokeAttendeeQr } = require('../controllers/qr.controller');
+const {
+  registerAttendee,
+  listAttendees,
+  getAttendeeById,
+  updateAttendeeById,
+  deleteAttendeeById
+} = require('../controllers/attendee.controller');
+const { authenticate, authorize } = require('../middlewares/auth.middleware');
 
 const router = express.Router();
 
-router.get('/:id/qr', getAttendeeQr);
-router.post('/:id/qr/revoke', revokeAttendeeQr);
+router.get('/', authenticate, authorize('organizer', 'super_admin'), listAttendees);
+router.post('/', authenticate, authorize('organizer', 'super_admin'), registerAttendee);
+router.get('/:id', authenticate, authorize('organizer', 'super_admin'), getAttendeeById);
+router.patch('/:id', authenticate, authorize('organizer', 'super_admin'), updateAttendeeById);
+router.delete('/:id', authenticate, authorize('organizer', 'super_admin'), deleteAttendeeById);
+router.get('/:id/qr', authenticate, authorize('scanner_staff', 'organizer', 'super_admin'), getAttendeeQr);
+router.post('/:id/qr/revoke', authenticate, authorize('organizer', 'super_admin'), revokeAttendeeQr);
 
 module.exports = router;
