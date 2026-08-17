@@ -57,4 +57,11 @@ async function logout(req, res) {
   return ok(res, { message: 'Đã đăng xuất' });
 }
 
-module.exports = { login, refresh, logout };
+// Endpoint tiện dụng để test middleware authenticate/requireRole mà không cần
+// chờ có route event/attendee thật - đồng thời hữu ích thật sự cho frontend
+// (kiểm tra phiên đăng nhập còn hiệu lực không, lấy role hiện tại để render UI).
+async function me(req, res) {
+  return ok(res, { user: req.user });
+}
+
+module.exports = { login, refresh, logout, me };

@@ -1,10 +1,14 @@
 const express = require('express');
-const { scanCheckIn, manualCheckIn } = require('../controllers/checkin.controller');
-const { authenticate, authorize } = require('../middlewares/auth.middleware');
-
 const router = express.Router();
+const checkinController = require('../controllers/checkin.controller');
 
-router.post('/scan', authenticate, authorize('scanner_staff', 'organizer', 'super_admin'), scanCheckIn);
-router.post('/manual', authenticate, authorize('organizer', 'scanner_staff', 'super_admin'), manualCheckIn);
+// Route quét mã QR
+router.post('/scan', checkinController.scanCheckIn);
+
+// Route check-in thủ công
+router.post('/manual', checkinController.manualCheckIn);
+
+// Route lấy lịch sử/nhật ký check-in
+router.get('/logs', checkinController.getLogs);
 
 module.exports = router;

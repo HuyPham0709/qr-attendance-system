@@ -73,7 +73,15 @@ async function scanCheckIn(req, res) {
       });
     }
 
-    Object.assign(attendee, result.patch);
+    attendee.status = 'checked_in';
+    attendee.checkIn = {
+      isCheckedIn: true,
+      checkInAt: new Date(),
+      checkInBy: req.user?._id,
+      gate: req.body?.gateCode || req.body?.gate || 'GATE_A',
+      method: 'qr_scan',
+      deviceInfo: req.body?.deviceId
+    };
     await attendee.save();
 
     await CheckInLog.create({
@@ -189,8 +197,25 @@ async function manualCheckIn(req, res) {
     });
   }
 }
+async function getLogs(req, res) {
+  try {
+    const { eventId } = req.query;
+    if (!eventId) {
+      return res.status(400).json({ success: false, message: 'Thiếu eventId' });
+    }
+
+    const logs = await CheckInLog.find({ eventId })
+      .populate('attendeeId', 'fullName email')
+      .sort({ createdAt: -1 });
+
+    return res.json({ success: true, data: logs });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+}
 
 module.exports = {
   scanCheckIn,
-  manualCheckIn
+  manualCheckIn, 
+  getLogs
 };
