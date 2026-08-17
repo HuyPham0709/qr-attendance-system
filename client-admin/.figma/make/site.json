@@ -1,0 +1,10 @@
+{
+  "description": "Streamline event attendance management with real-time check-in, attendee tracking, and comprehensive analytics for organizers and staff.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
