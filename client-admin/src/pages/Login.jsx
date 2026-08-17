@@ -1,10 +1,18 @@
 import { QrCode } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import "./Login.css";
 
 function Login() {
+  const navigate = useNavigate();
+
+  function handleSubmit(event) {
+    event.preventDefault();
+    navigate("/", { replace: true });
+  }
+
   return (
     <div className="login-screen">
-      <form className="login-card" onSubmit={(e) => e.preventDefault()}>
+      <form className="login-card" onSubmit={handleSubmit}>
         <span className="login-mark">
           <QrCode size={20} strokeWidth={2.4} />
         </span>
@@ -13,19 +21,16 @@ function Login() {
 
         <label className="login-field">
           <span>Email</span>
-          <input type="email" placeholder="ban-to-chuc@vidu.com" disabled />
+          <input type="email" placeholder="ban-to-chuc@vidu.com" />
         </label>
         <label className="login-field">
           <span>Mật khẩu</span>
-          <input type="password" placeholder="••••••••" disabled />
+          <input type="password" placeholder="••••••••" />
         </label>
 
-        <button type="submit" className="btn-primary" disabled>
+        <button type="submit" className="btn-primary">
           Đăng nhập
         </button>
-        <p className="login-note">
-          Form này chưa nối API — sẽ hoàn thiện ở Tuần 2 (Auth API).
-        </p>
       </form>
     </div>
   );

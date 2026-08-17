@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -17,6 +17,7 @@ const NAV_ITEMS = [
 ];
 
 function Sidebar() {
+  const navigate = useNavigate();
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
@@ -50,7 +51,11 @@ function Sidebar() {
           <span className="status-dot" aria-hidden="true" />
           <span>Realtime: đang kết nối…</span>
         </div>
-        <button type="button" className="sidebar-link sidebar-logout">
+        <button
+          type="button"
+          className="sidebar-link sidebar-logout"
+          onClick={() => navigate("/login")}
+        >
           <LogOut size={18} strokeWidth={2} aria-hidden="true" />
           <span>Đăng xuất</span>
         </button>

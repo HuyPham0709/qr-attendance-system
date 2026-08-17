@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import "./App.css";
 import AdminLayout from "./layouts/AdminLayout.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
@@ -17,6 +17,7 @@ function App() {
         <Route path="/attendees" element={<Attendees />} />
         <Route path="/reports" element={<Reports />} />
       </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
