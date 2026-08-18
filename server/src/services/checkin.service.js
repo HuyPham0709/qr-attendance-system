@@ -1,25 +1,14 @@
 // server/src/services/checkin.service.js
 //
-// GIAI ĐOẠN HIỆN TẠI: chỉ code LOGIC QUYẾT ĐỊNH (business rule), chưa nối
-// API/DB/Redis. Lý do tách riêng: hàm evaluateCheckIn() dưới đây là HÀM
-// THUẦN (pure function) — nhận vào attendee/event đã được load sẵn (object
-// thường, không cần Mongoose document thật), KHÔNG tự query DB, KHÔNG tự
-// ghi DB, KHÔNG gọi Redis. Nhờ vậy unit test chạy được ngay, không cần
-// MongoDB/Redis, không cần mock phức tạp — test 1 file logic thuần.
+// GIAI ĐOẠN TRƯỚC: chỉ có evaluateCheckIn() — hàm thuần (pure), chưa nối
+// DB/API. GIỜ ĐÃ NỐI THẬT qua checkin.controller.js (xem file đó) — lớp
+// orchestrator gọi evaluateCheckIn() để LẤY QUYẾT ĐỊNH, rồi tự áp dụng
+// atomic update + ghi CheckInLog + cập nhật stats.
 //
-// Việc nối thật (Sprint 3) sẽ là 1 lớp orchestrator riêng
-// (vd checkin.controller.js) làm nhiệm vụ:
-//   1. decode token thô lấy attendeeId → fetch attendee (+qrSecret) từ DB
-//   2. fetch event từ DB
-//   3. Redis lock theo attendeeId (chống 2 request cùng lúc)
-//   4. gọi evaluateCheckIn() ở file này để LẤY QUYẾT ĐỊNH
-//   5. nếu outcome === 'success': áp dụng `patch` trả về bằng
-//      findOneAndUpdate CÓ ĐIỀU KIỆN (optimistic lock qua field `version`)
-//      để tầng DB tự chặn lần nữa nếu Redis lock lỡ có kẽ hở
-//   6. ghi CheckInLog, emit Socket.io, release Redis lock
-// Lớp đó CHƯA làm ở bước này theo đúng yêu cầu.
+// evaluateCheckIn() ở dưới GIỮ NGUYÊN là hàm thuần — không tự query DB,
+// không tự ghi DB — để giữ được lợi ích unit-test không cần Mongo.
 
-const { verifyQRToken } = require('./qrEngine.service');
+const { verifyQRToken, decodeRoutingInfo } = require('./qrEngine.service');
 
 /** Các outcome khớp đúng enum `result` trong CheckInLog.model.js */
 const OUTCOMES = Object.freeze({
@@ -41,27 +30,22 @@ const MESSAGES = {
 };
 
 /**
- * Decode "thô" (không xác thực chữ ký) để lấy attendeeId từ token —
- * dùng ở tầng orchestrator (chưa viết) để biết cần fetch attendee nào từ
- * DB TRƯỚC KHI có đủ dữ liệu (qrSecret) để verify đầy đủ.
+ * Lấy attendeeId/eventId từ token để tầng orchestrator biết cần fetch
+ * attendee nào từ DB TRƯỚC KHI có đủ dữ liệu (qrSecret) để verify đầy đủ.
  *
- * QUAN TRỌNG: hàm này KHÔNG xác thực chữ ký, KHÔNG được tin tưởng để ra
- * quyết định check-in — chỉ dùng để định tuyến (routing) sang bước fetch
- * + verify đầy đủ trong evaluateCheckIn().
+ * THAY ĐỔI: trước đây hàm này tự split base64url-decode token vì token cũ
+ * chỉ encode (không mã hoá) — giờ token đã được mã hoá AES-256-GCM
+ * (xem qrEngine.service.js), nên phải giải mã bằng đúng hàm của qrEngine
+ * thay vì tự parse tay ở đây.
+ *
+ * QUAN TRỌNG (không đổi): hàm này KHÔNG xác thực chữ ký HMAC (lớp 2,
+ * cần qrSecret riêng attendee) — KHÔNG được dùng để ra quyết định
+ * check-in, chỉ dùng để routing.
  *
  * @returns {{attendeeId: string, eventId: string} | null} null nếu token malformed
  */
 function decodeAttendeeIdFromToken(token) {
-  try {
-    const decoded = Buffer.from(token, 'base64url').toString('utf-8');
-    const parts = decoded.split('.');
-    if (parts.length !== 5) return null;
-    const [attendeeId, eventId] = parts;
-    if (!attendeeId || !eventId) return null;
-    return { attendeeId, eventId };
-  } catch {
-    return null;
-  }
+  return decodeRoutingInfo(token);
 }
 
 /**
@@ -86,22 +70,19 @@ function haversineDistanceMeters(a, b) {
 }
 
 /**
- * HÀM QUYẾT ĐỊNH CHÍNH — thuần (pure), không side-effect.
+ * HÀM QUYẾT ĐỊNH CHÍNH — thuần (pure), không side-effect. Không đổi so
+ * với bản trước (verifyQRToken vẫn cùng chữ ký gọi, chỉ đổi bên trong).
  *
  * @param {Object} params
- * @param {string} params.token - token quét được từ QR
+ * @param {string} params.token
  * @param {Object} params.attendee - attendee đã load từ DB, PHẢI có field qrSecret
- * @param {Object} params.event - event tương ứng, đã load từ DB
- * @param {{lat:number, lng:number}} [params.geo] - toạ độ nơi quét (từ thiết bị scanner)
- * @param {number} [params.now] - timestamp hiện tại (ms), truyền vào để test dễ, mặc định Date.now()
+ * @param {Object} params.event
+ * @param {{lat:number, lng:number}} [params.geo]
+ * @param {number} [params.now]
  *
  * @returns {{
- *   outcome: string,       // 1 trong OUTCOMES
- *   reason: string,        // chi tiết kỹ thuật hơn (vd 'malformed', 'invalid_signature')
- *   message: string,       // thông báo tiếng Việt, hiển thị được cho scanner_staff
- *   attendeeId: string|null,
- *   eventId: string|null,
- *   patch: Object|null     // nếu outcome === success: các field cần update vào Attendee document
+ *   outcome: string, reason: string, message: string,
+ *   attendeeId: string|null, eventId: string|null, patch: Object|null
  * }}
  */
 function evaluateCheckIn({ token, attendee, event, geo, now = Date.now() }) {
@@ -116,7 +97,6 @@ function evaluateCheckIn({ token, attendee, event, geo, now = Date.now() }) {
     };
   }
 
-  // --- Bước 1: xác thực chữ ký + hạn dùng ---
   const verifyResult = verifyQRToken(token, { qrSecret: attendee.qrSecret });
 
   if (!verifyResult.valid) {
@@ -134,8 +114,6 @@ function evaluateCheckIn({ token, attendee, event, geo, now = Date.now() }) {
   const attendeeId = String(attendee._id);
   const eventId = String(attendee.eventId);
 
-  // --- Bước 2: token phải thuộc đúng event đang check-in (phòng thủ thêm,
-  // dù về mặt toán học chữ ký đã đảm bảo payload không bị sửa) ---
   if (verifyResult.eventId !== eventId) {
     return {
       outcome: OUTCOMES.INVALID_QR,
@@ -147,8 +125,6 @@ function evaluateCheckIn({ token, attendee, event, geo, now = Date.now() }) {
     };
   }
 
-  // --- Bước 3: version trong token phải khớp qrVersion hiện tại → chặn
-  // QR đã bị revoke (xem revokeAttendeeQr trong qr.controller.js) ---
   if (verifyResult.version !== attendee.qrVersion) {
     return {
       outcome: OUTCOMES.REVOKED,
@@ -160,8 +136,6 @@ function evaluateCheckIn({ token, attendee, event, geo, now = Date.now() }) {
     };
   }
 
-  // --- Bước 4: vé bị huỷ → coi như revoked (CheckInLog không có enum
-  // riêng cho 'cancelled', dùng chung nhóm revoked) ---
   if (attendee.status === 'cancelled') {
     return {
       outcome: OUTCOMES.REVOKED,
@@ -173,7 +147,6 @@ function evaluateCheckIn({ token, attendee, event, geo, now = Date.now() }) {
     };
   }
 
-  // --- Bước 5: chống check-in trùng ---
   const allowMultipleCheckIn = Boolean(event?.settings?.allowMultipleCheckIn);
   if (attendee.checkIn?.isCheckedIn && !allowMultipleCheckIn) {
     const prevGate = attendee.checkIn.gate ? ` tại ${attendee.checkIn.gate}` : '';
@@ -190,7 +163,6 @@ function evaluateCheckIn({ token, attendee, event, geo, now = Date.now() }) {
     };
   }
 
-  // --- Bước 6: geo-fence (chỉ áp dụng nếu event bật requireGeoFence) ---
   const requireGeoFence = Boolean(event?.settings?.requireGeoFence);
   if (requireGeoFence) {
     const center = event?.location?.geo;
@@ -208,10 +180,6 @@ function evaluateCheckIn({ token, attendee, event, geo, now = Date.now() }) {
     }
 
     if (!center || typeof center.lat !== 'number' || typeof center.lng !== 'number') {
-      // Event bật requireGeoFence nhưng chưa cấu hình toạ độ trung tâm —
-      // đây là lỗi cấu hình phía tổ chức, không phải lỗi của attendee.
-      // Chặn lại thay vì mặc định cho qua, vì "không xác thực được" khác
-      // với "trong phạm vi".
       return {
         outcome: OUTCOMES.WRONG_GEO,
         reason: 'event_geo_not_configured',
@@ -235,7 +203,6 @@ function evaluateCheckIn({ token, attendee, event, geo, now = Date.now() }) {
     }
   }
 
-  // --- Tất cả điều kiện đều pass → thành công ---
   return {
     outcome: OUTCOMES.SUCCESS,
     reason: 'ok',
@@ -247,11 +214,6 @@ function evaluateCheckIn({ token, attendee, event, geo, now = Date.now() }) {
       'checkIn.isCheckedIn': true,
       'checkIn.checkInAt': new Date(now),
       'checkIn.method': 'qr_scan'
-      // gate/deviceInfo/checkInBy do tầng orchestrator (Sprint 3) điền vào
-      // patch này trước khi ghi DB, vì evaluateCheckIn() không nhận userId
-      // (ai đang thao tác) — cố tình không đưa userId vào hàm thuần này
-      // để không lẫn lộn "ai quét" (auth concern) với "có được phép
-      // check-in hay không" (business rule) trong cùng 1 hàm.
     }
   };
 }

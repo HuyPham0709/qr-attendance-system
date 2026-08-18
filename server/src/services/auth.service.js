@@ -1,5 +1,20 @@
-const crypto = require('crypto');
+// server/src/services/auth.service.js
+//
+// Viết khớp với các file đã có sẵn trong repo:
+// - token.util.js: signAccessToken/verifyAccessToken (JWT access, payload
+//   {sub, role, organizationId}), signRefreshToken/verifyRefreshToken (JWT
+//   refresh, payload {sub, family, jti}), hashToken (SHA-256 của jti).
+// - RefreshToken.model.js: mỗi lần refresh là 1 document mới (rotation),
+//   cùng field `family` xuyên suốt 1 phiên đăng nhập, `familyExpiresAt`
+//   là trần tuyệt đối không đổi khi rotate.
+// - User.model.js: passwordHash (select:false), isActive, isLocked(),
+//   failedLoginAttempts, lockUntil.
+
+// package.json chỉ có "bcryptjs" (pure JS), không có "bcrypt" (native
+// binding) — 2 package khác nhau tuy API tương thích. require('bcrypt')
+// ở bản trước sẽ crash ngay lúc load module vì package đó chưa cài.
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const User = require('../models/User.model');
 const RefreshToken = require('../models/RefreshToken.model');
 const {
@@ -9,28 +24,20 @@ const {
   hashToken
 } = require('../utils/token.util');
 
-const ACCESS_TOKEN_TTL_MS = 15 * 60 * 1000;
-const REFRESH_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// --- Cấu hình (đọc từ env, có default hợp lý nếu thiếu) ---
+const MAX_FAILED_ATTEMPTS = Number(process.env.MAX_FAILED_LOGIN_ATTEMPTS || 5);
+const LOCK_DURATION_MS = Number(process.env.ACCOUNT_LOCK_MINUTES || 15) * 60 * 1000;
+const REFRESH_TTL_SECONDS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 7) * 24 * 60 * 60;
+const REFRESH_ABSOLUTE_TTL_SECONDS =
+  Number(process.env.REFRESH_TOKEN_ABSOLUTE_TTL_DAYS || 30) * 24 * 60 * 60;
 
-const MAX_FAILED_ATTEMPTS = 5;
-const LOCK_DURATION_MS = 15 * 60 * 1000; // 15 phút
-const SLIDING_DAYS = Number(process.env.REFRESH_TOKEN_SLIDING_DAYS || 7);
-const ABSOLUTE_DAYS = Number(process.env.REFRESH_TOKEN_ABSOLUTE_DAYS || 30);
-
-// Hash bcrypt giả lập tính sẵn để tránh lộ thông tin qua chênh lệch thời gian phản hồi (Timing Attack)
-const DUMMY_HASH = bcrypt.hashSync('dummy-password-for-constant-time-compare', 10);
-
-// Lớp AuthError tương thích linh hoạt với cả 2 kiểu truyền tham số từ 2 nhánh
+/**
+ * Lỗi nghiệp vụ auth — auth.controller.js đã bắt bằng
+ * `err instanceof authService.AuthError` nên phải export đúng class này
+ * (không phải 1 class trùng tên định nghĩa lại ở nơi khác).
+ */
 class AuthError extends Error {
-  constructor(messageOrStatus, statusOrMessage = 401, code = 'AUTH_ERROR') {
-    let message, status;
-    if (typeof messageOrStatus === 'number') {
-      status = messageOrStatus;
-      message = statusOrMessage;
-    } else {
-      message = messageOrStatus;
-      status = statusOrMessage;
-    }
+  constructor(status, message, code) {
     super(message);
     this.name = 'AuthError';
     this.status = status;
@@ -38,42 +45,87 @@ class AuthError extends Error {
   }
 }
 
-function sanitizeUser(user) {
-  if (!user) return null;
-
+/** Bỏ các field nhạy cảm trước khi trả user về client. */
+function sanitizeUser(userDoc) {
   return {
-    id: user._id.toString(),
-    organizationId: user.organizationId ? user.organizationId.toString() : null,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    isActive: user.isActive,
-    assignedEvents: user.assignedEvents || []
+    id: userDoc._id,
+    name: userDoc.name,
+    email: userDoc.email,
+    role: userDoc.role,
+    organizationId: userDoc.organizationId,
+    assignedEvents: userDoc.assignedEvents
   };
 }
 
-async function issueTokenPair({ user, family, familyExpiresAt, ip, userAgent }) {
+/**
+ * Đăng nhập.
+ * @returns {{accessToken:string, refreshToken:string, refreshMaxAgeMs:number, user:object}}
+ */
+async function login({ email, password, ip, userAgent }) {
+  const user = await User.findOne({ email }).select('+passwordHash');
+
+  // Cố tình dùng CHUNG 1 thông báo lỗi cho "không có email" và "sai mật
+  // khẩu" — tránh lộ thông tin email nào đã đăng ký trong hệ thống
+  // (user enumeration).
+  if (!user) {
+    throw new AuthError(401, 'Email hoặc mật khẩu không đúng', 'INVALID_CREDENTIALS');
+  }
+
+  if (!user.isActive) {
+    throw new AuthError(403, 'Tài khoản đã bị khoá, liên hệ quản trị viên', 'ACCOUNT_DISABLED');
+  }
+
+  if (user.isLocked()) {
+    throw new AuthError(
+      423,
+      'Tài khoản tạm khoá do đăng nhập sai quá nhiều lần, vui lòng thử lại sau',
+      'ACCOUNT_LOCKED'
+    );
+  }
+
+  const passwordMatches = await bcrypt.compare(password, user.passwordHash);
+
+  if (!passwordMatches) {
+    user.failedLoginAttempts += 1;
+
+    if (user.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
+      user.lockUntil = new Date(Date.now() + LOCK_DURATION_MS);
+      // Reset về 0 luôn sau khi khoá, để lần mở khoá tiếp theo tính lại
+      // từ đầu thay vì cộng dồn vô hạn.
+      user.failedLoginAttempts = 0;
+    }
+
+    await user.save();
+    throw new AuthError(401, 'Email hoặc mật khẩu không đúng', 'INVALID_CREDENTIALS');
+  }
+
+  // Đăng nhập đúng -> reset bộ đếm.
+  if (user.failedLoginAttempts > 0 || user.lockUntil) {
+    user.failedLoginAttempts = 0;
+    user.lockUntil = null;
+    await user.save();
+  }
+
   const accessToken = signAccessToken({
-    userId: user._id.toString(),
+    userId: String(user._id),
     role: user.role,
-    organizationId: user.organizationId ? user.organizationId.toString() : null
+    organizationId: user.organizationId ? String(user.organizationId) : null
   });
 
-  const slidingExpiresAt = new Date(Date.now() + SLIDING_DAYS * 86400000);
-  const expiresAt = slidingExpiresAt < familyExpiresAt ? slidingExpiresAt : familyExpiresAt;
-  const expiresInSeconds = Math.max(60, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+  const family = crypto.randomBytes(16).toString('hex');
+  const now = Date.now();
+  const familyExpiresAt = new Date(now + REFRESH_ABSOLUTE_TTL_SECONDS * 1000);
+  const expiresAt = new Date(now + REFRESH_TTL_SECONDS * 1000);
 
   const { token: refreshToken, jti } = signRefreshToken({
-    userId: user._id.toString(),
+    userId: String(user._id),
     family,
-    expiresInSeconds
+    expiresInSeconds: REFRESH_TTL_SECONDS
   });
-
-  const tokenHash = hashToken(jti);
 
   await RefreshToken.create({
     userId: user._id,
-    tokenHash,
+    tokenHash: hashToken(jti),
     family,
     familyExpiresAt,
     expiresAt,
@@ -84,145 +136,138 @@ async function issueTokenPair({ user, family, familyExpiresAt, ip, userAgent }) 
   return {
     accessToken,
     refreshToken,
-    tokenHash,
-    refreshMaxAgeMs: expiresAt.getTime() - Date.now()
-  };
-}
-
-async function login({ email, password, ip, userAgent }) {
-  const normalizedEmail = String(email || '').trim().toLowerCase();
-  if (!normalizedEmail || !password) {
-    throw new AuthError(400, 'Email và mật khẩu là bắt buộc', 'INVALID_INPUT');
-  }
-
-  const genericError = () => new AuthError('Email hoặc mật khẩu không đúng', 401, 'INVALID_CREDENTIALS');
-
-  const user = await User.findOne({ email: normalizedEmail }).select('+passwordHash');
-
-  if (!user) {
-    await bcrypt.compare(password, DUMMY_HASH);
-    throw genericError();
-  }
-
-  if (typeof user.isLocked === 'function' && user.isLocked()) {
-    const minutesLeft = Math.ceil((user.lockUntil.getTime() - Date.now()) / 60000);
-    throw new AuthError(
-      `Tài khoản tạm khoá do đăng nhập sai nhiều lần. Thử lại sau ${minutesLeft} phút.`,
-      423,
-      'ACCOUNT_LOCKED'
-    );
-  }
-
-  if (!user.isActive) {
-    throw new AuthError('Tài khoản đã bị vô hiệu hóa', 403, 'ACCOUNT_DISABLED');
-  }
-
-  const passwordOk = await bcrypt.compare(password, user.passwordHash);
-
-  if (!passwordOk) {
-    user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
-    if (user.failedLoginAttempts >= MAX_FAILED_ATTEMPTS) {
-      user.lockUntil = new Date(Date.now() + LOCK_DURATION_MS);
-      user.failedLoginAttempts = 0;
-    }
-    await user.save();
-    throw genericError();
-  }
-
-  user.failedLoginAttempts = 0;
-  user.lockUntil = null;
-  await user.save();
-
-  const family = crypto.randomUUID ? crypto.randomUUID() : crypto.randomBytes(16).toString('hex');
-  const familyExpiresAt = new Date(Date.now() + ABSOLUTE_DAYS * 86400000);
-
-  const { accessToken, refreshToken, refreshMaxAgeMs } = await issueTokenPair({
-    user, family, familyExpiresAt, ip, userAgent
-  });
-
-  return {
-    accessToken,
-    refreshToken,
-    refreshMaxAgeMs,
+    refreshMaxAgeMs: REFRESH_TTL_SECONDS * 1000,
     user: sanitizeUser(user)
   };
 }
 
+/**
+ * Cấp lại access token + refresh token mới (rotation) từ refresh token cũ.
+ * Phát hiện reuse: nếu refresh token đưa lên đã từng bị revoke trước đó
+ * (tức là đã được rotate 1 lần, giờ ai đó lại dùng bản cũ) -> coi như bị
+ * đánh cắp, revoke NGAY TOÀN BỘ family (mọi refresh token cùng phiên).
+ */
 async function refresh({ refreshToken, ip, userAgent }) {
   if (!refreshToken) {
-    throw new AuthError('Thiếu refresh token', 401, 'MISSING_REFRESH_TOKEN');
+    throw new AuthError(401, 'Thiếu refresh token', 'NO_REFRESH_TOKEN');
   }
 
   let payload;
   try {
     payload = verifyRefreshToken(refreshToken);
   } catch {
-    throw new AuthError('Refresh token không hợp lệ hoặc đã hết hạn', 401, 'INVALID_REFRESH_TOKEN');
+    throw new AuthError(401, 'Refresh token không hợp lệ hoặc đã hết hạn', 'INVALID_REFRESH_TOKEN');
   }
 
-  const tokenHash = hashToken(payload.jti || refreshToken);
-  const record = await RefreshToken.findOne({ tokenHash });
+  const tokenHash = hashToken(payload.jti);
+  const stored = await RefreshToken.findOne({ tokenHash });
 
-  if (!record) {
-    throw new AuthError('Refresh token không hợp lệ hoặc không tồn tại', 401, 'INVALID_REFRESH_TOKEN');
+  if (!stored) {
+    throw new AuthError(401, 'Refresh token không hợp lệ', 'INVALID_REFRESH_TOKEN');
   }
 
-  if (record.revokedAt) {
-    // Phát hiện token bị tái sử dụng -> thu hồi toàn bộ token family để bảo vệ người dùng
+  if (stored.revokedAt) {
+    // Token này đã bị revoke từ trước (do đã rotate 1 lần) mà vẫn có
+    // request dùng lại -> dấu hiệu token bị đánh cắp và dùng song song
+    // với bản đã rotate. Revoke toàn bộ family để buộc đăng nhập lại
+    // trên MỌI thiết bị đang giữ refresh token của phiên này.
     await RefreshToken.updateMany(
-      { family: record.family, revokedAt: null },
+      { family: stored.family, revokedAt: null },
       { $set: { revokedAt: new Date() } }
     );
     throw new AuthError(
-      'Phát hiện refresh token bị dùng lại - phiên đăng nhập đã bị thu hồi vì lý do bảo mật',
       401,
-      'REFRESH_REUSE_DETECTED'
+      'Phát hiện refresh token bị tái sử dụng, vui lòng đăng nhập lại',
+      'REFRESH_TOKEN_REUSE'
     );
   }
 
-  if (record.expiresAt.getTime() < Date.now()) {
-    throw new AuthError('Refresh token đã hết hạn, vui lòng đăng nhập lại', 401, 'REFRESH_EXPIRED');
+  if (stored.expiresAt.getTime() < Date.now()) {
+    throw new AuthError(401, 'Refresh token đã hết hạn', 'REFRESH_TOKEN_EXPIRED');
   }
 
-  const user = await User.findById(record.userId);
+  if (stored.familyExpiresAt.getTime() < Date.now()) {
+    throw new AuthError(401, 'Phiên đăng nhập đã hết hạn, vui lòng đăng nhập lại', 'SESSION_EXPIRED');
+  }
+
+  const user = await User.findById(stored.userId);
   if (!user || !user.isActive) {
-    throw new AuthError('Tài khoản không còn hoạt động', 403, 'ACCOUNT_DISABLED');
+    throw new AuthError(403, 'Tài khoản không còn khả dụng', 'ACCOUNT_DISABLED');
   }
 
-  const { accessToken, refreshToken: newRefreshToken, tokenHash: newTokenHash, refreshMaxAgeMs } =
-    await issueTokenPair({
-      user,
-      family: record.family,
-      familyExpiresAt: record.familyExpiresAt,
-      ip,
-      userAgent
-    });
+  // --- Rotate: revoke bản ghi cũ, tạo bản ghi mới cùng family ---
+  const now = Date.now();
+  // Sliding TTL nhưng không bao giờ vượt quá familyExpiresAt tuyệt đối.
+  const nextExpiresAt = new Date(
+    Math.min(now + REFRESH_TTL_SECONDS * 1000, stored.familyExpiresAt.getTime())
+  );
 
-  record.revokedAt = new Date();
-  record.replacedByHash = newTokenHash;
-  await record.save();
+  const { token: newRefreshToken, jti: newJti } = signRefreshToken({
+    userId: String(user._id),
+    family: stored.family,
+    expiresInSeconds: Math.max(1, Math.floor((nextExpiresAt.getTime() - now) / 1000))
+  });
 
-  return { accessToken, refreshToken: newRefreshToken, refreshMaxAgeMs };
+  const newHash = hashToken(newJti);
+
+  stored.revokedAt = new Date();
+  stored.replacedByHash = newHash;
+  await stored.save();
+
+  await RefreshToken.create({
+    userId: user._id,
+    tokenHash: newHash,
+    family: stored.family,
+    familyExpiresAt: stored.familyExpiresAt,
+    expiresAt: nextExpiresAt,
+    createdByIp: ip,
+    userAgent
+  });
+
+  const accessToken = signAccessToken({
+    userId: String(user._id),
+    role: user.role,
+    organizationId: user.organizationId ? String(user.organizationId) : null
+  });
+
+  return {
+    accessToken,
+    refreshToken: newRefreshToken,
+    refreshMaxAgeMs: nextExpiresAt.getTime() - now
+  };
 }
 
+/**
+ * Đăng xuất: revoke toàn bộ family của refresh token hiện tại (đăng xuất
+ * cả phiên, không chỉ 1 bản ghi) để refresh token không dùng lại được.
+ *
+ * LƯU Ý: access token (JWT, không lưu DB) vẫn còn hiệu lực tới khi hết
+ * TTL riêng của nó (15 phút theo token.util.js) — đây là giới hạn cố hữu
+ * của access token dạng JWT stateless, không có blacklist. Muốn revoke
+ * access token ngay lập tức cần thêm 1 tầng blacklist (vd Redis), ngoài
+ * phạm vi của service này.
+ *
+ * Cố tình KHÔNG throw lỗi nếu token thiếu/không hợp lệ — logout phải luôn
+ * "thành công" từ góc nhìn client để cookie chắc chắn được xoá.
+ */
 async function logout({ refreshToken }) {
   if (!refreshToken) return;
+
+  let payload;
   try {
-    const payload = verifyRefreshToken(refreshToken);
-    const tokenHash = hashToken(payload.jti || refreshToken);
-    await RefreshToken.updateOne({ tokenHash }, { $set: { revokedAt: new Date() } });
+    payload = verifyRefreshToken(refreshToken);
   } catch {
-    const tokenHash = hashToken(refreshToken);
-    await RefreshToken.updateOne({ tokenHash }, { $set: { revokedAt: new Date() } });
+    return;
   }
+
+  const tokenHash = hashToken(payload.jti);
+  const stored = await RefreshToken.findOne({ tokenHash });
+  if (!stored) return;
+
+  await RefreshToken.updateMany(
+    { family: stored.family, revokedAt: null },
+    { $set: { revokedAt: new Date() } }
+  );
 }
 
-module.exports = {
-  AuthError,
-  sanitizeUser,
-  login,
-  refresh,
-  logout,
-  ACCESS_TOKEN_TTL_MS,
-  REFRESH_TOKEN_TTL_MS
-};
+module.exports = { AuthError, login, refresh, logout };
