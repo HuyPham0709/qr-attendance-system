@@ -7,6 +7,8 @@ const Event = require('./models/Event.model');
 const attendeeRoutes = require('./routes/attendee.routes');
 const authRoutes = require('./routes/auth.routes');
 const checkinRoutes = require('./routes/checkin.routes');
+const eventRoutes = require('./routes/event.routes');
+const ticketTypeRoutes = require('./routes/ticketType.routes');
 const { authenticate, authorize } = require('./middlewares/auth.middleware');
 const { errorHandler } = require('./middlewares/errorHandler.middleware');
 
@@ -35,6 +37,8 @@ app.get('/', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/checkin', checkinRoutes);
+app.use('/api/events', eventRoutes);
+app.use('/api/ticket-types', ticketTypeRoutes);
 
 // API lấy danh sách Attendees từ MongoDB
 //

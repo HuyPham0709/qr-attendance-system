@@ -94,9 +94,12 @@ async function seedUsers(organizationId) {
   return users;
 }
 
-async function seedEvent(organizationId) {
+async function seedEvents(organizationId) {
   const now = Date.now();
-  const event = await Event.create({
+  const events = [];
+
+  // Event 1: Tech Summit 2026
+  const event1 = await Event.create({
     organizationId,
     name: 'Tech Summit 2026',
     slug: slugify(`tech-summit-2026-${now}`),
@@ -106,13 +109,13 @@ async function seedEvent(organizationId) {
       geo: { lat: 10.7769, lng: 106.7009 },
       geoFenceRadiusMeters: 200
     },
-    startAt: new Date(now + 3 * 24 * 60 * 60 * 1000), // 3 ngày nữa
-    endAt: new Date(now + 3 * 24 * 60 * 60 * 1000 + 4 * 60 * 60 * 1000), // +4h
+    startAt: new Date(now + 3 * 24 * 60 * 60 * 1000),
+    endAt: new Date(now + 3 * 24 * 60 * 60 * 1000 + 4 * 60 * 60 * 1000),
     status: 'published',
     settings: {
       allowMultipleCheckIn: false,
       requireGeoFence: false,
-      qrTokenTTLMinutes: 0, // đổi thành >0 để test rotating QR
+      qrTokenTTLMinutes: 0,
       checkInWindowMinutes: 60
     },
     gates: [
@@ -120,8 +123,63 @@ async function seedEvent(organizationId) {
       { name: 'Cổng B', code: 'GATE_B' }
     ]
   });
-  console.log('✅ Event:', event.name, `(slug: ${event.slug})`);
-  return event;
+  events.push(event1);
+  console.log('✅ Event 1:', event1.name);
+
+  // Event 2: Đào tạo Kỹ năng (sắp diễn ra)
+  const event2 = await Event.create({
+    organizationId,
+    name: 'Đào tạo Kỹ năng Lập trình',
+    slug: slugify(`training-workshop-${now}`),
+    description: 'Workshop về React, Node.js và các công nghệ hiện đại.',
+    location: {
+      address: '456 Lê Lợi, Quận 1, TP.HCM',
+      geo: { lat: 10.77, lng: 106.70 },
+      geoFenceRadiusMeters: 150
+    },
+    startAt: new Date(now + 7 * 24 * 60 * 60 * 1000), // 7 ngày nữa
+    endAt: new Date(now + 7 * 24 * 60 * 60 * 1000 + 8 * 60 * 60 * 1000),
+    status: 'published',
+    settings: {
+      allowMultipleCheckIn: false,
+      requireGeoFence: true,
+      qrTokenTTLMinutes: 30, // rotating QR
+      checkInWindowMinutes: 120
+    },
+    gates: [{ name: 'Cổng Chính', code: 'MAIN_GATE' }]
+  });
+  events.push(event2);
+  console.log('✅ Event 2:', event2.name);
+
+  // Event 3: Hackathon (quá khứ, để test filter)
+  const event3 = await Event.create({
+    organizationId,
+    name: 'Hackathon 2025',
+    slug: slugify(`hackathon-2025-${now}`),
+    description: 'Hackathon lập trình 24 giờ - sự kiện đã kết thúc.',
+    location: {
+      address: '789 Trần Hưng Đạo, Quận 1, TP.HCM',
+      geo: { lat: 10.762, lng: 106.703 },
+      geoFenceRadiusMeters: 300
+    },
+    startAt: new Date(now - 30 * 24 * 60 * 60 * 1000), // 30 ngày trước
+    endAt: new Date(now - 29 * 24 * 60 * 60 * 1000),
+    status: 'completed',
+    settings: {
+      allowMultipleCheckIn: true,
+      requireGeoFence: false,
+      qrTokenTTLMinutes: 0,
+      checkInWindowMinutes: 60
+    },
+    gates: [
+      { name: 'Cổng Vào', code: 'ENTER' },
+      { name: 'Cổng Ra', code: 'EXIT' }
+    ]
+  });
+  events.push(event3);
+  console.log('✅ Event 3:', event3.name);
+
+  return events;
 }
 
 async function seedTicketTypes(eventId) {
@@ -210,15 +268,26 @@ async function run() {
     const users = await seedUsers(org._id);
     const scannerUser = users.find((u) => u.role === 'scanner_staff');
 
-    const event = await seedEvent(org._id);
-    const ticketTypes = await seedTicketTypes(event._id);
-    await seedAttendees(event, ticketTypes, scannerUser);
+    // Seed 3 events thay vì 1
+    const events = await seedEvents(org._id);
+
+    // Seed ticket types + attendees cho mỗi event
+    for (const event of events) {
+      const ticketTypes = await seedTicketTypes(event._id);
+      // Chỉ seed attendees cho 2 event đầu (tránh tạo quá nhiều dữ liệu)
+      if (event.status !== 'completed') {
+        await seedAttendees(event, ticketTypes, scannerUser);
+      }
+    }
 
     console.log('\n🎉 Seed xong. Tài khoản demo (mật khẩu: 123456):');
     console.log('   - admin@demo.com     (super_admin)');
     console.log('   - organizer@demo.com (organizer)');
     console.log('   - scanner@demo.com   (scanner_staff)');
-    console.log(`\n👉 Event id: ${event._id}  (dùng để test GET /api/attendees/:id/qr với 1 attendee bất kỳ thuộc event này)`);
+    console.log(`\n📋 Events được tạo:`);
+    events.forEach((e, i) => {
+      console.log(`   ${i + 1}. ${e.name} (id: ${e._id})`);
+    });
   } catch (err) {
     console.error('❌ Seed thất bại:', err);
     process.exitCode = 1;
