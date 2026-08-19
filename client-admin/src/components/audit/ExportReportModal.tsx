@@ -2,11 +2,11 @@ import React, { useState } from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { Input } from '../ui/Input'
-import { Event } from '../../types'
+import { EventItem } from '../../types'
 
 interface ExportReportModalProps {
   open: boolean
-  events: Event[]
+  events: EventItem[]
   onClose: () => void
   onExport: (format: string) => void
 }

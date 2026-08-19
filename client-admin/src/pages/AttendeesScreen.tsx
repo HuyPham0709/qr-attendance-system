@@ -8,8 +8,19 @@ import { QrInspectModal } from '../components/attendees/QrInspectModal'
 import { ImportAttendeesModal } from '../components/attendees/ImportAttendeesModal'
 import { attendees as initialAttendees } from '../data/mockData'
 import { AttendeeItem } from '../types'
+import { AuthUser } from '../services/authService'
 
-export function AttendeesScreen() {
+interface AttendeesScreenProps {
+  // Nhận user để sẵn sàng cho khi nối BE thật: mọi request list/import/
+  // export ở màn này phải kèm theo scope tổ chức của Organizer đang đăng
+  // nhập (mục 1.2 spec — filter theo organizationId ở mọi query). Màn
+  // hình này chỉ Organizer vào được (xem rbac.ts) — Super Admin không có
+  // trong nav vì đây là dữ liệu nhạy cảm của attendee (least privilege,
+  // mục 1.1 spec).
+  user: AuthUser
+}
+
+export function AttendeesScreen({ user }: AttendeesScreenProps) {
   const [attendeeList, setAttendeeList] = useState<AttendeeItem[]>(initialAttendees)
   const [selected, setSelected] = useState<number[]>([])
   const [showImport, setShowImport] = useState(false)
@@ -99,7 +110,9 @@ export function AttendeesScreen() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Attendee Engine</h1>
-          <p className="text-sm text-slate-500">{attendeeList.length} attendees · TechSummit 2026</p>
+          <p className="text-sm text-slate-500">
+            {attendeeList.length} attendees · TechSummit 2026{user.organizationName ? ` · ${user.organizationName}` : ''}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           {/* Nút Export Excel Thật */}

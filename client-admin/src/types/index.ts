@@ -1,4 +1,5 @@
-export type Screen = 'login' | 'dashboard' | 'events' | 'attendees' | 'staff-audit'
+export type Screen = 'login' | 'dashboard' | 'events' | 'attendees' | 'staff-audit' | 'organizations'
+export type OrgStatus = 'Active' | 'Locked' | 'Pending'
 export type StatusBadgeType = 'Registered' | 'Checked-in' | 'Revoked' | 'Offline Pending'
 export type EventStatus = 'Draft' | 'Published' | 'Ongoing'
 export type ScanResult = 'Success' | 'Duplicate' | 'Expired QR' | 'Wrong Geo' | 'Revoked'
@@ -28,6 +29,20 @@ export interface EventItem {
   location: string
   gates: number
   status: EventStatus
+  // organizationId để Organizer chỉ thấy/sửa sự kiện của mình, còn Super
+  // Admin xem toàn bộ (mục 1.1/1.2 spec — filter theo organizationId).
+  organizationId: string
+  organizationName: string
+}
+
+export interface OrganizationItem {
+  id: string
+  name: string
+  plan: 'free' | 'pro' | 'enterprise'
+  status: OrgStatus
+  eventsCount: number
+  ownerEmail: string
+  createdAt: string
 }
 
 export interface AttendeeItem {
@@ -49,6 +64,7 @@ export interface StaffItem {
   event: string
   gate: string
   status: string
+  organizationId: string
 }
 
 export interface AuditLogItem {
@@ -58,4 +74,5 @@ export interface AuditLogItem {
   staff: string
   device: string
   result: ScanResult
+  organizationId: string
 }

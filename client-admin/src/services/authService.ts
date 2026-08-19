@@ -5,6 +5,12 @@ export interface AuthUser {
   email: string
   name?: string
   role: 'super_admin' | 'organizer' | 'scanner_staff'
+  // Khớp với User.model.js (organizationId). Super Admin vận hành toàn
+  // nền tảng nên field này với họ luôn undefined/null — không gắn với
+  // 1 tổ chức cụ thể nào. Organizer luôn có giá trị, dùng để filter mọi
+  // query (event/attendee/staff) theo đúng org của họ (mục 1.2 spec).
+  organizationId?: string
+  organizationName?: string
 }
 
 // Đăng nhập xong luôn về 1 trong 3 dạng — role/2FA có bật hay không đều

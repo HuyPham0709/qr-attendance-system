@@ -6,8 +6,10 @@ import { DashboardScreen } from './pages/DashboardScreen'
 import { EventsScreen } from './pages/EventsScreen'
 import { AttendeesScreen } from './pages/AttendeesScreen'
 import { StaffAuditScreen } from './pages/StaffAuditScreen'
+import { OrganizationsScreen } from './pages/OrganizationsScreen'
 import { Screen } from './types'
 import { AuthUser } from './services/authService'
+import { canAccessScreen, defaultScreenFor, AdminRole } from './utils/rbac'
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('login')
@@ -22,7 +24,7 @@ export default function App() {
 
   const handleLogin = (authedUser: AuthUser) => {
     setUser(authedUser)
-    setScreen('dashboard')
+    setScreen(defaultScreenFor(authedUser.role as AdminRole))
   }
 
   const handleLogout = () => {
@@ -34,16 +36,32 @@ export default function App() {
     return <LoginScreen onLogin={handleLogin} />
   }
 
+  const role = user.role as AdminRole
+
+  // Route guard: nếu vì lý do gì đó `screen` đang trỏ tới 1 màn hình
+  // role hiện tại không có quyền (vd Organizer bị điều hướng thẳng tới
+  // 'organizations' bằng URL/state cũ), rơi về màn hình mặc định thay vì
+  // render nhầm UI của role khác. Đây là lớp UX-guard trên FE — quyền
+  // thật vẫn phải do BE middleware + filter theo organizationId chặn
+  // (xem ghi chú trong rbac.ts).
+  const safeScreen: Screen = canAccessScreen(role, screen) ? screen : defaultScreenFor(role)
+
+  function handleNavigate(next: Screen) {
+    if (!canAccessScreen(role, next)) return
+    setScreen(next)
+  }
+
   return (
     <div className="flex h-screen bg-[#F8FAFC] overflow-hidden">
-      <Sidebar screen={screen} onNavigate={setScreen} user={user} onLogout={handleLogout} />
+      <Sidebar screen={safeScreen} onNavigate={handleNavigate} user={user} onLogout={handleLogout} />
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar />
         <main className="flex-1 overflow-y-auto">
-          {screen === 'dashboard' && <DashboardScreen />}
-          {screen === 'events' && <EventsScreen />}
-          {screen === 'attendees' && <AttendeesScreen />}
-          {screen === 'staff-audit' && <StaffAuditScreen />}
+          {safeScreen === 'dashboard' && <DashboardScreen user={user} />}
+          {safeScreen === 'events' && <EventsScreen user={user} />}
+          {safeScreen === 'attendees' && <AttendeesScreen user={user} />}
+          {safeScreen === 'staff-audit' && <StaffAuditScreen user={user} />}
+          {safeScreen === 'organizations' && <OrganizationsScreen />}
         </main>
       </div>
     </div>

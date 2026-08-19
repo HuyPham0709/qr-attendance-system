@@ -21,6 +21,9 @@ export function SearchIcon() {
 export function ChevronIcon() {
   return <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
 }
+export function BuildingIcon() {
+  return <svg className="w-4.5 h-4.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4 3a1 1 0 00-1 1v13h2V5h6v12h2V5a1 1 0 00-1-1H4zM3 17a1 1 0 100 2h14a1 1 0 100-2H3zm4-9a1 1 0 011-1h.01a1 1 0 110 2H8a1 1 0 01-1-1zm1 3a1 1 0 100 2h.01a1 1 0 100-2H8zm3-3a1 1 0 011-1h.01a1 1 0 110 2H12a1 1 0 01-1-1zm1 3a1 1 0 100 2h.01a1 1 0 100-2H12z" clipRule="evenodd" /></svg>
+}
 export function QrIcon() {
   return <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="3" width="6" height="6" rx="1"/><rect x="3" y="15" width="6" height="6" rx="1"/><path d="M21 15h-3v3M21 21h-3M18 15v6M15 21v-3"/><path d="M9 9H3m18-6v6M3 3v6M9 3H3m6 6H3m6 6H9m6-6h3m-3 6h-3m6 0v-3m-6-3h6"/></svg>
 }

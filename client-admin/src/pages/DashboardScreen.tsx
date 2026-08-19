@@ -3,10 +3,90 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell
 } from 'recharts'
-import { hourlyData, gateData, GATE_COLORS, recentActivity } from '../data/mockData'
+import { hourlyData, gateData, GATE_COLORS, recentActivity, events, organizations } from '../data/mockData'
 import { StatusBadgeType } from '../types'
+import { AuthUser } from '../services/authService'
+import { isSuperAdmin } from '../utils/rbac'
 
-export function DashboardScreen() {
+interface DashboardScreenProps {
+  user: AuthUser
+}
+
+export function DashboardScreen({ user }: DashboardScreenProps) {
+  // Mục 1.1 spec: Super Admin vận hành toàn nền tảng, không có 1 sự kiện
+  // cụ thể để "xem real-time" như Organizer — dashboard của họ là tổng
+  // quan hệ thống (số tổ chức, số sự kiện, tổ chức đang chờ duyệt...),
+  // KHÔNG lẫn với dashboard theo dõi check-in live của Organizer.
+  if (isSuperAdmin(user)) {
+    return <SystemOverviewDashboard />
+  }
+  return <OrganizerDashboard user={user} />
+}
+
+function SystemOverviewDashboard() {
+  const activeOrgs = organizations.filter(o => o.status === 'Active').length
+  const pendingOrgs = organizations.filter(o => o.status === 'Pending').length
+  const lockedOrgs = organizations.filter(o => o.status === 'Locked').length
+
+  const statCards = [
+    { label: 'Organizations', value: String(organizations.length), sub: `${activeOrgs} active`, icon: '🏢', color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100' },
+    { label: 'Total Events (system)', value: String(events.length), sub: 'across all organizations', icon: '📅', color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-100' },
+    { label: 'Pending Approval', value: String(pendingOrgs), sub: 'organizations awaiting review', icon: '⏳', color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100' },
+    { label: 'Locked', value: String(lockedOrgs), sub: 'security / policy holds', icon: '🔒', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100' },
+  ]
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-xl font-bold text-slate-900">System Overview</h1>
+        <p className="text-sm text-slate-500">Platform-wide status · Super Admin</p>
+      </div>
+
+      <div className="grid grid-cols-4 gap-4">
+        {statCards.map(s => (
+          <div key={s.label} className={`bg-white rounded-2xl border ${s.border} p-5 shadow-sm hover:shadow-md transition-shadow`}>
+            <div className="flex items-start justify-between mb-4">
+              <div className={`w-10 h-10 ${s.bg} rounded-xl flex items-center justify-center text-lg`}>{s.icon}</div>
+            </div>
+            <div className="text-2xl font-bold text-slate-900 mb-1">{s.value}</div>
+            <div className="text-xs text-slate-500">{s.label}</div>
+            <div className={`mt-1 text-xs font-medium ${s.color}`}>{s.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">Events across all organizations</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Read-only — event editing belongs to each Organizer</p>
+          </div>
+        </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100">
+              {['Event', 'Organization', 'Location', 'Status'].map(h => (
+                <th key={h} className="py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {events.map(e => (
+              <tr key={e.id} className="border-b border-slate-50 last:border-0">
+                <td className="py-3 font-semibold text-slate-800">{e.name}</td>
+                <td className="py-3 text-slate-600 text-xs">{e.organizationName}</td>
+                <td className="py-3 text-slate-500 text-xs truncate max-w-[200px]">{e.location}</td>
+                <td className="py-3 text-xs text-slate-500">{e.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
+function OrganizerDashboard({ user }: { user: AuthUser }) {
   const [tick, setTick] = useState(0)
   useEffect(() => {
     const id = setInterval(() => setTick(t => t + 1), 3000)
@@ -34,7 +114,9 @@ export function DashboardScreen() {
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-xl font-bold text-slate-900">Real-time Dashboard</h1>
-        <p className="text-sm text-slate-500">TechSummit 2026 · Live attendance monitoring</p>
+        <p className="text-sm text-slate-500">
+          TechSummit 2026 · Live attendance monitoring{user.organizationName ? ` · ${user.organizationName}` : ''}
+        </p>
       </div>
 
       <div className="grid grid-cols-4 gap-4">

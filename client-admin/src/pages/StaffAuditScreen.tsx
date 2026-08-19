@@ -4,10 +4,28 @@ import { Toast } from '../components/ui/Toast'
 import { ScanResultBadge } from "../components/ui/Badges";
 import { SearchIcon } from '../components/ui/Icons'
 import { ExportReportModal } from '../components/audit/ExportReportModal'
-import { staff, auditLogs, events } from '../data/mockData'
+import { staff as allStaff, auditLogs as allAuditLogs, events as allEvents } from '../data/mockData'
+import { AuthUser } from '../services/authService'
+import { isSuperAdmin, scopeByOrganization } from '../utils/rbac'
 
-export function StaffAuditScreen() {
-  const [tab, setTab] = useState<'staff' | 'audit'>('staff')
+interface StaffAuditScreenProps {
+  user: AuthUser
+}
+
+export function StaffAuditScreen({ user }: StaffAuditScreenProps) {
+  const superAdmin = isSuperAdmin(user)
+  const orgRole = superAdmin ? 'super_admin' as const : 'organizer' as const
+
+  // Mục 1.2: Organizer chỉ gán/xem staff của sự kiện MÌNH quản lý.
+  // Mục 1.1: Super Admin không gán nhân sự (đó là việc của Organizer) —
+  // nên tab "Staff Assignment" chỉ tồn tại cho Organizer.
+  const staff = scopeByOrganization(orgRole, user.organizationId, allStaff)
+  // Mục 1.1: Super Admin "xem log audit toàn hệ thống" — KHÔNG filter
+  // theo org. Mục 1.2: Organizer chỉ xem log của sự kiện mình.
+  const auditLogs = scopeByOrganization(orgRole, user.organizationId, allAuditLogs)
+  const events = scopeByOrganization(orgRole, user.organizationId, allEvents)
+
+  const [tab, setTab] = useState<'staff' | 'audit'>(superAdmin ? 'audit' : 'staff')
   const [showExport, setShowExport] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
 
@@ -20,8 +38,12 @@ export function StaffAuditScreen() {
     <div className="p-6 space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-slate-900">Staff & Security Audit</h1>
-          <p className="text-sm text-slate-500">Staff assignments · Append-only audit log</p>
+          <h1 className="text-xl font-bold text-slate-900">{superAdmin ? 'Security Audit' : 'Staff & Security Audit'}</h1>
+          <p className="text-sm text-slate-500">
+            {superAdmin
+              ? 'System-wide append-only audit log · read-only'
+              : 'Staff assignments · Append-only audit log'}
+          </p>
         </div>
         <Button variant="secondary" onClick={() => setShowExport(true)}>
           <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
@@ -31,22 +53,26 @@ export function StaffAuditScreen() {
         </Button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
-        {(['staff', 'audit'] as const).map(t => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-5 py-2 rounded-lg text-sm font-medium transition-all ${
-              tab === t ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            {t === 'staff' ? '👤 Staff Assignment' : '🛡️ Audit Log'}
-          </button>
-        ))}
-      </div>
+      {/* Mục 1.1 spec: gán Scanner Staff vào sự kiện là nghiệp vụ của
+          Organizer trên sự kiện của họ — Super Admin không có tab này,
+          chỉ có audit log toàn hệ thống. */}
+      {!superAdmin && (
+        <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+          {(['staff', 'audit'] as const).map(t => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-5 py-2 rounded-lg text-sm font-medium transition-all ${
+                tab === t ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {t === 'staff' ? '👤 Staff Assignment' : '🛡️ Audit Log'}
+            </button>
+          ))}
+        </div>
+      )}
 
-      {tab === 'staff' && (
+      {tab === 'staff' && !superAdmin && (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-50">
             <h3 className="text-sm font-semibold text-slate-900">Scanner Staff Assignments</h3>
@@ -80,8 +106,7 @@ export function StaffAuditScreen() {
                   <td className="px-5 py-4">
                     <select className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 bg-white text-slate-700 focus:border-emerald-400 outline-none">
                       <option>{s.event}</option>
-                      <option>Startup Expo APAC</option>
-                      <option>Dev Conf Southeast</option>
+                      {events.filter(e => e.name !== s.event).map(e => <option key={e.id}>{e.name}</option>)}
                     </select>
                   </td>
                   <td className="px-5 py-4">
@@ -111,11 +136,11 @@ export function StaffAuditScreen() {
         </div>
       )}
 
-      {tab === 'audit' && (
+      {(tab === 'audit' || superAdmin) && (
         <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-50">
             <div className="flex items-center gap-3">
-              <h3 className="text-sm font-semibold text-slate-900">Security Audit Log</h3>
+              <h3 className="text-sm font-semibold text-slate-900">{superAdmin ? 'System-wide Audit Log' : 'Security Audit Log'}</h3>
               <span className="text-xs bg-slate-100 text-slate-500 px-2.5 py-1 rounded-full font-medium">Append-only</span>
             </div>
             <div className="flex items-center gap-2">
@@ -136,7 +161,7 @@ export function StaffAuditScreen() {
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                {['Timestamp', 'Event', 'Attendee', 'Scanned By', 'Device ID', 'Result'].map(h => (
+                {['Timestamp', 'Event', ...(superAdmin ? ['Organization'] : []), 'Attendee', 'Scanned By', 'Device ID', 'Result'].map(h => (
                   <th key={h} className="px-5 py-3.5 text-left font-semibold text-slate-500 uppercase tracking-wide text-[10px]">{h}</th>
                 ))}
               </tr>
@@ -146,23 +171,26 @@ export function StaffAuditScreen() {
                 <tr key={i} className={`border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition-colors ${row.result !== 'Success' ? 'bg-red-50/20' : ''}`}>
                   <td className="px-5 py-3.5 font-mono text-slate-400">{row.ts}</td>
                   <td className="px-5 py-3.5 text-slate-700 font-medium">{row.event}</td>
+                  {superAdmin && (
+                    <td className="px-5 py-3.5 text-slate-600">
+                      {allEvents.find(e => e.organizationId === row.organizationId)?.organizationName || row.organizationId}
+                    </td>
+                  )}
                   <td className="px-5 py-3.5 text-slate-600">{row.attendee}</td>
                   <td className="px-5 py-3.5 text-slate-600">{row.staff}</td>
                   <td className="px-5 py-3.5 font-mono text-slate-400">{row.device}</td>
                   <td className="px-5 py-3.5"><ScanResultBadge result={row.result} /></td>
                 </tr>
               ))}
+              {auditLogs.length === 0 && (
+                <tr>
+                  <td colSpan={superAdmin ? 7 : 6} className="px-5 py-10 text-center text-slate-400">No audit entries found.</td>
+                </tr>
+              )}
             </tbody>
           </table>
           <div className="flex items-center justify-between px-5 py-3 border-t border-slate-50 bg-slate-50/50">
-            <span className="text-xs text-slate-400">Showing {auditLogs.length} of 2,841 entries</span>
-            <div className="flex items-center gap-1">
-              {[1, 2, 3, '…', 285].map((p, i) => (
-                <button key={i} className={`min-w-[28px] h-7 px-2 rounded-lg text-xs font-medium transition-colors ${p === 1 ? 'bg-emerald-500 text-white' : 'text-slate-500 hover:bg-slate-100'}`}>
-                  {p}
-                </button>
-              ))}
-            </div>
+            <span className="text-xs text-slate-400">Showing {auditLogs.length} of {auditLogs.length} entries</span>
           </div>
         </div>
       )}
