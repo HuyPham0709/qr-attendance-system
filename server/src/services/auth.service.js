@@ -19,10 +19,19 @@ const User = require('../models/User.model');
 const RefreshToken = require('../models/RefreshToken.model');
 const {
   signAccessToken,
+  signTwoFactorPendingToken,
+  verifyTwoFactorPendingToken,
   signRefreshToken,
   verifyRefreshToken,
   hashToken
 } = require('../utils/token.util');
+const twoFactorService = require('./twoFactor.service');
+
+// Mục 1.1 spec: "Rủi ro: tài khoản Super Admin bị chiếm quyền -> toàn hệ
+// thống lộ -> cần bắt buộc 2FA cho vai trò này". Danh sách role BẮT BUỘC
+// 2FA, không phải tuỳ chọn — nếu 1 super_admin chưa từng setup 2FA, login
+// KHÔNG cấp token thẳng mà ép qua flow setup trước.
+const ROLES_REQUIRE_2FA = ['super_admin'];
 
 // --- Cấu hình (đọc từ env, có default hợp lý nếu thiếu) ---
 const MAX_FAILED_ATTEMPTS = Number(process.env.MAX_FAILED_LOGIN_ATTEMPTS || 5);
@@ -106,6 +115,32 @@ async function login({ email, password, ip, userAgent }) {
     await user.save();
   }
 
+  // --- Rẽ nhánh 2FA ---
+  // Email/password đúng KHÔNG có nghĩa là cấp token ngay với các role bắt
+  // buộc 2FA. Ở bước này CHƯA cấp accessToken/refreshToken thật, chỉ cấp
+  // 1 pendingToken sống ngắn để FE dùng tiếp cho bước nhập mã (hoặc bước
+  // setup lần đầu nếu tài khoản chưa có 2FA).
+  if (ROLES_REQUIRE_2FA.includes(user.role)) {
+    const pendingToken = signTwoFactorPendingToken({
+      userId: String(user._id),
+      stage: user.twoFactorEnabled ? 'login' : 'setup'
+    });
+
+    return user.twoFactorEnabled
+      ? { requires2FA: true, pendingToken }
+      : { requires2FASetup: true, pendingToken };
+  }
+
+  return issueTokensForUser(user, { ip, userAgent });
+}
+
+/**
+ * Phần cấp access/refresh token thật + tạo bản ghi RefreshToken — dùng
+ * chung cho 3 chỗ: (1) login không cần 2FA, (2) verify2FALogin sau khi
+ * nhập đúng mã, (3) confirm2FASetup (tự động đăng nhập luôn sau khi
+ * setup 2FA lần đầu thành công, khỏi bắt user login lại 1 lần nữa).
+ */
+async function issueTokensForUser(user, { ip, userAgent }) {
   const accessToken = signAccessToken({
     userId: String(user._id),
     role: user.role,
@@ -139,6 +174,92 @@ async function login({ email, password, ip, userAgent }) {
     refreshMaxAgeMs: REFRESH_TTL_SECONDS * 1000,
     user: sanitizeUser(user)
   };
+}
+
+/**
+ * Bước 2 của luồng login khi tài khoản ĐÃ bật 2FA (super_admin).
+ * Nhận pendingToken cấp ở login() (stage:'login') + mã 6 số người dùng
+ * gõ từ app xác thực, verify bằng chính secret đã lưu trong DB.
+ */
+async function verify2FALogin({ pendingToken, code, ip, userAgent }) {
+  const payload = decodePendingToken(pendingToken, 'login');
+
+  const user = await User.findById(payload.sub).select('+twoFactorSecret');
+  if (!user || !user.isActive || !user.twoFactorEnabled) {
+    throw new AuthError(401, 'Phiên xác thực không hợp lệ, vui lòng đăng nhập lại', 'INVALID_2FA_SESSION');
+  }
+
+  if (!twoFactorService.verifyCode(code, user.twoFactorSecret)) {
+    throw new AuthError(401, 'Mã xác thực không đúng hoặc đã hết hạn', 'INVALID_2FA_CODE');
+  }
+
+  return issueTokensForUser(user, { ip, userAgent });
+}
+
+/**
+ * Bước setup 2FA lần đầu (mục 1.1: bắt buộc với super_admin chưa có 2FA).
+ * Sinh 1 secret TẠM (chưa lưu vào twoFactorSecret thật) + QR để quét, trả
+ * cho FE hiển thị. Secret tạm này chỉ có hiệu lực sau khi user xác nhận
+ * đúng 1 mã ở confirm2FASetup().
+ */
+async function setup2FA({ pendingToken }) {
+  const payload = decodePendingToken(pendingToken, 'setup');
+
+  const user = await User.findById(payload.sub);
+  if (!user || !user.isActive) {
+    throw new AuthError(401, 'Phiên xác thực không hợp lệ, vui lòng đăng nhập lại', 'INVALID_2FA_SESSION');
+  }
+  if (user.twoFactorEnabled) {
+    throw new AuthError(400, 'Tài khoản đã bật 2FA từ trước', 'TWO_FA_ALREADY_ENABLED');
+  }
+
+  const secret = twoFactorService.generateSecret();
+  user.twoFactorTempSecret = secret;
+  await user.save();
+
+  const otpAuthUri = twoFactorService.buildOtpAuthUri(user.email, secret);
+  const qrCodeDataUrl = await twoFactorService.generateQrCodeDataUrl(otpAuthUri);
+
+  return { qrCodeDataUrl, secret };
+}
+
+/**
+ * Xác nhận setup 2FA: user nhập mã app xác thực vừa sinh ra từ secret tạm
+ * ở bước trên. Đúng -> secret tạm trở thành secret thật, bật
+ * twoFactorEnabled, VÀ đăng nhập luôn (không bắt gõ lại email/password).
+ */
+async function confirm2FASetup({ pendingToken, code, ip, userAgent }) {
+  const payload = decodePendingToken(pendingToken, 'setup');
+
+  const user = await User.findById(payload.sub).select('+twoFactorTempSecret');
+  if (!user || !user.isActive) {
+    throw new AuthError(401, 'Phiên xác thực không hợp lệ, vui lòng đăng nhập lại', 'INVALID_2FA_SESSION');
+  }
+  if (!user.twoFactorTempSecret) {
+    throw new AuthError(400, 'Chưa khởi tạo setup 2FA, gọi /2fa/setup trước', 'TWO_FA_SETUP_NOT_STARTED');
+  }
+
+  if (!twoFactorService.verifyCode(code, user.twoFactorTempSecret)) {
+    throw new AuthError(401, 'Mã xác thực không đúng', 'INVALID_2FA_CODE');
+  }
+
+  user.twoFactorSecret = user.twoFactorTempSecret;
+  user.twoFactorTempSecret = null;
+  user.twoFactorEnabled = true;
+  await user.save();
+
+  return issueTokensForUser(user, { ip, userAgent });
+}
+
+function decodePendingToken(pendingToken, expectedStage) {
+  if (!pendingToken) {
+    throw new AuthError(401, 'Thiếu pendingToken', 'NO_2FA_PENDING_TOKEN');
+  }
+  try {
+    return verifyTwoFactorPendingToken(pendingToken, expectedStage);
+  } catch {
+    throw new AuthError(401, 'pendingToken không hợp lệ hoặc đã hết hạn, vui lòng đăng nhập lại', 'INVALID_2FA_PENDING_TOKEN');
+  }
 }
 
 /**
@@ -270,4 +391,12 @@ async function logout({ refreshToken }) {
   );
 }
 
-module.exports = { AuthError, login, refresh, logout };
+module.exports = {
+  AuthError,
+  login,
+  verify2FALogin,
+  setup2FA,
+  confirm2FASetup,
+  refresh,
+  logout
+};

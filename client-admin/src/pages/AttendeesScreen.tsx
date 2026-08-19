@@ -1,18 +1,21 @@
 import React, { useState } from 'react'
+import * as XLSX from 'xlsx'
 import { Button } from '../components/ui/Button'
 import { StatusBadge } from "../components/ui/Badges";
 import { Toast } from '../components/ui/Toast'
 import { SearchIcon } from '../components/ui/Icons'
 import { QrInspectModal } from '../components/attendees/QrInspectModal'
 import { ImportAttendeesModal } from '../components/attendees/ImportAttendeesModal'
-import { attendees } from '../data/mockData'
-import { Attendee } from '../types'
+import { attendees as initialAttendees } from '../data/mockData'
+import { AttendeeItem } from '../types'
 
 export function AttendeesScreen() {
+  const [attendeeList, setAttendeeList] = useState<AttendeeItem[]>(initialAttendees)
   const [selected, setSelected] = useState<number[]>([])
   const [showImport, setShowImport] = useState(false)
-  const [showQR, setShowQR] = useState<Attendee | null>(null)
+  const [showQR, setShowQR] = useState<AttendeeItem | null>(null)
   const [statusFilter, setStatusFilter] = useState('All')
+  const [searchTerm, setSearchTerm] = useState('')
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
 
   function showToast(msg: string, type: 'success' | 'error' = 'success') {
@@ -24,7 +27,71 @@ export function AttendeesScreen() {
     setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id])
   }
 
-  const filtered = statusFilter === 'All' ? attendees : attendees.filter(a => a.status === statusFilter)
+  // Lọc dữ liệu theo trạng thái và từ khóa tìm kiếm
+  const filtered = attendeeList.filter(a => {
+    const matchesStatus = statusFilter === 'All' ? true : a.status === statusFilter
+    const matchesSearch = 
+      a.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      a.email.toLowerCase().includes(searchTerm.toLowerCase())
+    return matchesStatus && matchesSearch
+  })
+
+  // CHỨC NĂNG XUẤT EXCEL (EXPORT)
+  const handleExportExcel = () => {
+    // Nếu có dòng được chọn thì xuất dòng chọn, ngược lại xuất toàn bộ danh sách đã lọc
+    const targetList = selected.length > 0 
+      ? attendeeList.filter(a => selected.includes(Number(a.id)))
+      : filtered
+
+    if (targetList.length === 0) {
+      showToast('Không có dữ liệu để xuất Excel', 'error')
+      return
+    }
+
+    // Format dữ liệu xuất ra Excel
+    const excelData = targetList.map((a, index) => ({
+      'STT': index + 1,
+      'Mã ID': a.id,
+      'Họ và Tên': a.name,
+      'Email': a.email,
+      'Loại Vé': a.ticket,
+      'QR Version': `v${a.qrVersion}`,
+      'Trạng Thái': a.status,
+      'Thời Gian Check-in': a.timestamp || '--',
+      'Cổng Check-in': a.gate || '--'
+    }))
+
+    // Tạo workbook Excel bằng SheetJS
+    const worksheet = XLSX.utils.json_to_sheet(excelData)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendees')
+
+    // Thiết lập độ rộng cột
+    worksheet['!cols'] = [
+      { wch: 6 },
+      { wch: 15 },
+      { wch: 25 },
+      { wch: 30 },
+      { wch: 20 },
+      { wch: 12 },
+      { wch: 18 },
+      { wch: 20 },
+      { wch: 15 },
+    ]
+
+    // Xuất file về máy
+    const fileName = `Danh_Sach_Nguoi_Tham_Du_${new Date().toISOString().slice(0, 10)}.xlsx`
+    XLSX.writeFile(workbook, fileName)
+    showToast(`Đã xuất ${targetList.length} hàng ra file Excel!`, 'success')
+  }
+
+  // CHỨC NĂNG NHẬN DỮ LIỆU IMPORT KHỎI MODAL
+  const handleImportComplete = (msg: string, importedAttendees: AttendeeItem[]) => {
+    if (importedAttendees && importedAttendees.length > 0) {
+      setAttendeeList(prev => [...importedAttendees, ...prev])
+    }
+    showToast(msg, 'success')
+  }
 
   return (
     <div className="p-6 space-y-5">
@@ -32,15 +99,18 @@ export function AttendeesScreen() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-900">Attendee Engine</h1>
-          <p className="text-sm text-slate-500">{attendees.length} attendees · TechSummit 2026</p>
+          <p className="text-sm text-slate-500">{attendeeList.length} attendees · TechSummit 2026</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={() => showToast('Report export started', 'success')}>
+          {/* Nút Export Excel Thật */}
+          <Button variant="secondary" onClick={handleExportExcel}>
             <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
             </svg>
-            Export
+            Export Excel
           </Button>
+
+          {/* Nút Mở Modal Import Excel */}
           <Button variant="secondary" onClick={() => setShowImport(true)}>
             <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
               <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
@@ -58,6 +128,8 @@ export function AttendeesScreen() {
             <SearchIcon />
           </span>
           <input
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none"
             placeholder="Search by name or email…"
           />
@@ -97,7 +169,7 @@ export function AttendeesScreen() {
                 <input
                   type="checkbox"
                   className="rounded border-slate-300"
-                  onChange={e => setSelected(e.target.checked ? filtered.map(a => a.id) : [])}
+                  onChange={e => setSelected(e.target.checked ? filtered.map(a => Number(a.id)) : [])}
                 />
               </th>
               {['Full Name', 'Email', 'Ticket Type', 'QR Version', 'Status', 'Check-in Time', 'Gate', ''].map(h => (
@@ -107,9 +179,9 @@ export function AttendeesScreen() {
           </thead>
           <tbody>
             {filtered.map(a => (
-              <tr key={a.id} className={`border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition-colors ${selected.includes(a.id) ? 'bg-emerald-50/30' : ''}`}>
+              <tr key={a.id} className={`border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition-colors ${selected.includes(Number(a.id)) ? 'bg-emerald-50/30' : ''}`}>
                 <td className="px-4 py-3.5">
-                  <input type="checkbox" className="rounded border-slate-300" checked={selected.includes(a.id)} onChange={() => toggleSelect(a.id)} />
+                  <input type="checkbox" className="rounded border-slate-300" checked={selected.includes(Number(a.id))} onChange={() => toggleSelect(Number(a.id))} />
                 </td>
                 <td className="px-4 py-3.5 font-semibold text-slate-800">{a.name}</td>
                 <td className="px-4 py-3.5 text-slate-500 text-xs font-mono">{a.email}</td>
@@ -147,7 +219,7 @@ export function AttendeesScreen() {
 
         {/* Pagination */}
         <div className="flex items-center justify-between px-5 py-3 border-t border-slate-50 bg-slate-50/50">
-          <span className="text-xs text-slate-400">Showing 1–{filtered.length} of {attendees.length} attendees</span>
+          <span className="text-xs text-slate-400">Showing 1–{filtered.length} of {attendeeList.length} attendees</span>
           <div className="flex items-center gap-1">
             {[1, 2, 3, '…', 12].map((p, i) => (
               <button
@@ -167,11 +239,11 @@ export function AttendeesScreen() {
       <ImportAttendeesModal
         open={showImport}
         onClose={() => setShowImport(false)}
-        onImportComplete={msg => showToast(msg, 'success')}
+        onImportComplete={handleImportComplete}
       />
 
       <QrInspectModal
-        attendee={showQR}
+        attendee={showQR as any}
         onClose={() => setShowQR(null)}
         onResendEmail={email => showToast(`QR email resent to ${email}`)}
         onRevoke={attendee => {

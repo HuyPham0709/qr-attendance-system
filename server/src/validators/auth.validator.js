@@ -14,4 +14,16 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Thiếu mật khẩu')
 });
 
-module.exports = { loginSchema };
+// Dùng chung cho /2fa/verify và /2fa/confirm-setup — cả 2 đều cần
+// pendingToken (cấp lúc login() hoặc setup2FA()) + mã 6 số từ app xác
+// thực. regex chặn luôn input không phải 6 chữ số trước khi tới service.
+const twoFactorCodeSchema = z.object({
+  pendingToken: z.string().min(1, 'Thiếu pendingToken'),
+  code: z.string().regex(/^\d{6}$/, 'Mã xác thực phải gồm đúng 6 chữ số')
+});
+
+const twoFactorSetupSchema = z.object({
+  pendingToken: z.string().min(1, 'Thiếu pendingToken')
+});
+
+module.exports = { loginSchema, twoFactorCodeSchema, twoFactorSetupSchema };

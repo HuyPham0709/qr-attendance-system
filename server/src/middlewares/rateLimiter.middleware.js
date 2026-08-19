@@ -55,4 +55,23 @@ const scanRateLimiter = rateLimit({
   }
 });
 
-module.exports = { scanRateLimiter };
+// Mã 2FA chỉ có 6 chữ số (1 triệu khả năng) — không giới hạn số lần thử,
+// brute-force trong vài phút là khả thi. Giới hạn theo IP là đủ ở đây
+// (khác /checkin/scan): endpoint này chỉ gọi được khi đã có pendingToken
+// hợp lệ từ bước login trước đó, không phải endpoint public vô điều kiện.
+const twoFactorRateLimiter = rateLimit({
+  windowMs: WINDOW_MS,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    return fail(
+      res,
+      429,
+      'Nhập sai mã 2FA quá nhiều lần. Vui lòng thử lại sau ít phút.',
+      'RATE_LIMITED'
+    );
+  }
+});
+
+module.exports = { scanRateLimiter, twoFactorRateLimiter };

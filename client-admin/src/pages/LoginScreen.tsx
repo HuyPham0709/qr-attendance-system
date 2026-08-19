@@ -2,58 +2,126 @@ import React, { useState } from 'react'
 import { Input } from '../components/ui/Input'
 import { Button } from '../components/ui/Button'
 import { Modal } from '../components/ui/Modal'
+import { loginApi, verify2FAApi, setup2FAApi, confirmSetup2FAApi, AuthUser } from '../services/authService'
 
 interface LoginScreenProps {
-  onLogin: () => void
+  onLogin: (user: AuthUser) => void
 }
 
-type UserRole = 'super-admin' | 'organizer' | 'scanner'
+// Trước đây có 1 nút chọn "Super Admin / Organizer / Scanner Staff" ở màn
+// login, và toàn bộ logic (có bắt 2FA hay không, vào giao diện gì) đều
+// dựa vào role người dùng TỰ BẤM — trong khi role thật lại do server trả
+// về sau khi xác thực email/password. Hai giá trị này có thể lệch nhau
+// (vd tài khoản thật là Organizer nhưng người dùng lỡ bấm "Scanner
+// Staff"), nên FE luôn tin role thật từ server, KHÔNG có bước chọn role
+// thủ công nữa.
+//
+// App này (client-admin) chỉ dành cho Super Admin và Organizer theo đúng
+// kiến trúc trong tài liệu spec (mục 3 — Scanner Staff dùng app riêng
+// client-scanner, offline-first). Nếu tài khoản đăng nhập vào đây có
+// role scanner_staff, chặn lại và hướng dẫn dùng đúng app.
+type Step = 'credentials' | '2fa-verify' | '2fa-setup'
 
 export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
-  const [role, setRole] = useState<UserRole>('super-admin')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [show2FA, setShow2FA] = useState(false)
+
+  const [step, setStep] = useState<Step>('credentials')
+  const [pendingToken, setPendingToken] = useState('')
   const [code, setCode] = useState('')
 
-  function handleLogin() {
+  // Chỉ dùng ở bước setup 2FA lần đầu (hiện QR để quét bằng Google
+  // Authenticator/Authy...). secret text là fallback để gõ tay nếu máy
+  // không quét được QR — hành vi chuẩn của mọi app 2FA ngoài đời.
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState('')
+  const [manualSecret, setManualSecret] = useState('')
+
+  function handleAuthUser(user: AuthUser) {
+    if (user.role === 'scanner_staff') {
+      setError('Tài khoản Scanner Staff không đăng nhập ở đây — vui lòng dùng app Scanner (client-scanner) dành riêng cho quét QR.')
+      setStep('credentials')
+      setCode('')
+      return
+    }
+    onLogin(user)
+  }
+
+  async function handleLogin() {
     setError('')
     if (!email || !password) {
       setError('Email and password are required.')
       return
     }
-    if (password !== 'demo') {
-      setError('Invalid credentials. Please try again.')
+
+    setLoading(true)
+    try {
+      const result = await loginApi(email, password)
+
+      if (result.kind === 'session') {
+        handleAuthUser(result.user)
+        return
+      }
+
+      if (result.kind === 'requires2FA') {
+        setPendingToken(result.pendingToken)
+        setStep('2fa-verify')
+        return
+      }
+
+      // requires2FASetup: tài khoản super_admin bắt buộc phải có 2FA
+      // (mục 1.1 spec) nhưng chưa từng setup — khởi tạo QR ngay.
+      setPendingToken(result.pendingToken)
+      const setupData = await setup2FAApi(result.pendingToken)
+      setQrCodeDataUrl(setupData.qrCodeDataUrl)
+      setManualSecret(setupData.secret)
+      setStep('2fa-setup')
+    } catch (err: any) {
+      setError(err.message || 'Không thể kết nối đến máy chủ.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleVerify2FA() {
+    setError('')
+    if (code.length !== 6) {
+      setError('Nhập đủ 6 chữ số từ app xác thực.')
       return
     }
     setLoading(true)
-    setTimeout(() => {
+    try {
+      const { user } = await verify2FAApi(pendingToken, code)
+      handleAuthUser(user)
+    } catch (err: any) {
+      // Mã TOTP thật đổi mỗi 30 giây — nhắc người dùng lấy đúng mã hiện
+      // tại thay vì mã cũ đã hết hạn trên màn hình app xác thực.
+      setError(err.message || 'Mã xác thực không đúng hoặc đã hết hạn.')
+      setCode('')
+    } finally {
       setLoading(false)
-      if (role === 'super-admin') {
-        setShow2FA(true)
-      } else {
-        onLogin()
-      }
-    }, 1200)
+    }
   }
 
-  function handle2FA() {
-    if (code !== '123456') {
-      setError('Invalid 2FA code.')
+  async function handleConfirmSetup2FA() {
+    setError('')
+    if (code.length !== 6) {
+      setError('Nhập đủ 6 chữ số từ app xác thực.')
       return
     }
-    setShow2FA(false)
-    onLogin()
+    setLoading(true)
+    try {
+      const { user } = await confirmSetup2FAApi(pendingToken, code)
+      handleAuthUser(user)
+    } catch (err: any) {
+      setError(err.message || 'Mã xác thực không đúng.')
+      setCode('')
+    } finally {
+      setLoading(false)
+    }
   }
-
-  const roles = [
-    { id: 'super-admin', label: 'Super Admin', icon: '👑' },
-    { id: 'organizer', label: 'Organizer', icon: '📋' },
-    { id: 'scanner', label: 'Scanner Staff', icon: '📱' },
-  ] as const
 
   return (
     <div className="min-h-screen flex bg-slate-50">
@@ -131,31 +199,12 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         <div className="w-full max-w-sm">
           <div className="mb-8">
             <h1 className="text-2xl font-bold text-slate-900">Welcome back</h1>
-            <p className="text-slate-500 text-sm mt-1">Sign in to your admin account</p>
+            <p className="text-slate-500 text-sm mt-1">
+              Sign in to your admin account · dành cho Super Admin &amp; Organizer
+            </p>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 mb-6">
-            {roles.map(r => (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => {
-                  setRole(r.id as UserRole)
-                  setError('')
-                }}
-                className={`flex flex-col items-center gap-1 py-3 rounded-xl border text-xs font-medium transition-all ${
-                  role === r.id
-                    ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                    : 'border-slate-200 text-slate-500 hover:border-slate-300'
-                }`}
-              >
-                <span className="text-base">{r.icon}</span>
-                {r.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="space-y-4">
+          <form onSubmit={(e) => { e.preventDefault(); handleLogin(); }} className="space-y-4">
             <Input
               label="Email Address"
               type="email"
@@ -222,10 +271,9 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             )}
 
             <button
-              type="button"
-              onClick={handleLogin}
+              type="submit"
               disabled={loading}
-              className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20"
+              className="w-full bg-emerald-500 hover:bg-emerald-600 disabled:opacity-60 text-white font-semibold py-3 rounded-xl transition-all duration-200 flex items-center justify-center gap-2 shadow-md shadow-emerald-500/20 cursor-pointer"
             >
               {loading ? (
                 <>
@@ -239,22 +287,18 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                 'Sign In'
               )}
             </button>
-
-            <p className="text-center text-xs text-slate-400">
-              Demo: use password <span className="font-mono bg-slate-100 px-1 rounded">demo</span> · 2FA code{' '}
-              <span className="font-mono bg-slate-100 px-1 rounded">123456</span>
-            </p>
-          </div>
+          </form>
         </div>
       </div>
 
-      {/* 2FA Verification Modal */}
-      <Modal open={show2FA} onClose={() => setShow2FA(false)} title="Two-Factor Authentication">
+      {/* 2FA Verification Modal — tài khoản Super Admin đã bật 2FA từ trước */}
+      <Modal open={step === '2fa-verify'} onClose={() => setStep('credentials')} title="Two-Factor Authentication">
         <div className="space-y-4">
           <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
             <span className="text-amber-500">🔐</span>
             <p className="text-xs text-amber-800">
-              Super Admin access requires 2FA verification. Enter the 6-digit code from your authenticator app.
+              Super Admin access requires 2FA verification. Enter the current 6-digit code from your
+              authenticator app (Google Authenticator, Authy...). It changes every 30 seconds.
             </p>
           </div>
           <Input
@@ -263,17 +307,59 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             type="text"
             value={code}
             onChange={c => {
-              setCode(c)
+              setCode(c.replace(/\D/g, '').slice(0, 6))
               setError('')
             }}
           />
           {error && <p className="text-xs text-red-500">{error}</p>}
           <div className="flex gap-2 pt-1">
-            <Button variant="secondary" onClick={() => setShow2FA(false)} className="flex-1">
+            <Button variant="secondary" onClick={() => { setStep('credentials'); setCode('') }} className="flex-1">
               Cancel
             </Button>
-            <Button variant="primary" onClick={handle2FA} className="flex-1">
-              Verify & Sign In
+            <Button variant="primary" onClick={handleVerify2FA} className="flex-1">
+              Verify &amp; Sign In
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 2FA Setup Modal — lần đầu tiên tài khoản Super Admin đăng nhập, bắt buộc bật 2FA */}
+      <Modal open={step === '2fa-setup'} onClose={() => setStep('credentials')} title="Set up Two-Factor Authentication">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <span className="text-amber-500">🔐</span>
+            <p className="text-xs text-amber-800">
+              Super Admin accounts require 2FA. Scan this QR with Google Authenticator, Authy, or any TOTP
+              app, then enter the code it shows to finish setup.
+            </p>
+          </div>
+          {qrCodeDataUrl && (
+            <div className="flex justify-center">
+              <img src={qrCodeDataUrl} alt="2FA QR code" className="w-40 h-40 rounded-lg border border-slate-200" />
+            </div>
+          )}
+          {manualSecret && (
+            <p className="text-[11px] text-slate-500 text-center break-all">
+              Can&apos;t scan? Enter manually: <span className="font-mono">{manualSecret}</span>
+            </p>
+          )}
+          <Input
+            label="Authentication Code"
+            placeholder="000000"
+            type="text"
+            value={code}
+            onChange={c => {
+              setCode(c.replace(/\D/g, '').slice(0, 6))
+              setError('')
+            }}
+          />
+          {error && <p className="text-xs text-red-500">{error}</p>}
+          <div className="flex gap-2 pt-1">
+            <Button variant="secondary" onClick={() => { setStep('credentials'); setCode('') }} className="flex-1">
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleConfirmSetup2FA} className="flex-1">
+              Confirm &amp; Sign In
             </Button>
           </div>
         </div>

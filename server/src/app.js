@@ -19,8 +19,38 @@ const app = express();
 // credentials:true + origin cụ thể (KHÔNG dùng '*') bắt buộc khi client
 // gửi kèm cookie (auth dùng cookie httpOnly) — CORS chặn cookie cross-site
 // nếu origin là wildcard.
+//
+// BUG đã sửa: code cũ đọc `process.env.CLIENT_ORIGIN`, nhưng .env.example
+// lại định nghĩa `CLIENT_ADMIN_ORIGIN` / `CLIENT_SCANNER_ORIGIN` — 2 tên
+// biến không khớp nhau nên CLIENT_ORIGIN LUÔN LÀ undefined bất kể .env có
+// gì. `cors({ origin: undefined })` không set Access-Control-Allow-Origin
+// cho BẤT KỲ origin nào -> mọi preflight request từ trình duyệt đều bị
+// chặn, kể cả khi mọi thứ khác (route, cookie, JWT...) đã đúng hoàn toàn.
+// Đây là lý do lỗi CORS xảy ra, không liên quan gì tới phần login/2FA.
+//
+// Sửa: đọc danh sách origin được phép từ NHIỀU biến env (khớp đúng tên
+// trong .env.example) + hỗ trợ thêm CLIENT_ORIGIN dạng 1 hoặc nhiều origin
+// cách nhau bởi dấu phẩy, để không bị cứng vào đúng 1 cổng 5173/5174 —
+// môi trường dev có thể chạy ở cổng khác (vd devcontainer/cloud IDE hay
+// forward qua 1 cổng khác như 8443).
+const allowedOrigins = [
+  process.env.CLIENT_ADMIN_ORIGIN,
+  process.env.CLIENT_SCANNER_ORIGIN,
+  ...(process.env.CLIENT_ORIGIN ? process.env.CLIENT_ORIGIN.split(',') : [])
+]
+  .map((o) => o && o.trim())
+  .filter(Boolean);
+
 app.use(cors({
-  origin: process.env.CLIENT_ORIGIN,
+  origin(origin, callback) {
+    // origin undefined = request không qua trình duyệt (vd curl, Postman,
+    // server-to-server) hoặc same-origin -> luôn cho qua, không phải lỗ
+    // hổng vì cookie httpOnly chỉ có giá trị khi trình duyệt tự gửi kèm.
+    if (!origin || allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS: origin "${origin}" không nằm trong whitelist`));
+  },
   credentials: true
 }));
 app.use(express.json());

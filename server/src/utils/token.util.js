@@ -28,6 +28,37 @@ function verifyAccessToken(token) {
   return jwt.verify(token, ACCESS_SECRET, { algorithms: ['HS256'] });
 }
 
+// --- Token 2FA tạm thời ---
+// Dùng SAU khi email/password đúng nhưng TRƯỚC khi có mã 2FA đúng.
+// Ký bằng ACCESS_SECRET nhưng có claim `purpose: '2fa_pending'` riêng và
+// verifyTwoFactorPendingToken() bắt buộc kiểm tra claim này, để token
+// loại này không thể bị đưa nhầm vào chỗ đang cần access token thật (vd
+// nếu lỡ gắn vào cookie/middleware authenticate) — authenticate() ở
+// auth.middleware.js không đọc payload.purpose nên 1 access token thật
+// sẽ không có claim này và ngược lại.
+// TTL ngắn (mặc định 5 phút): đủ thời gian người dùng mở app xác thực
+// gõ mã, nhưng không treo lâu nếu họ bỏ dở giữa chừng.
+const TWO_FA_PENDING_TTL = process.env.TWO_FA_PENDING_TTL || '5m';
+
+function signTwoFactorPendingToken({ userId, stage }) {
+  // stage: 'login' (đã bật 2FA, chờ nhập mã) hoặc 'setup' (chưa bật,
+  // đang ép thiết lập lần đầu) — verify2FALogin/confirm2FASetup dùng
+  // đúng handler theo stage, tránh nhầm luồng.
+  return jwt.sign(
+    { sub: userId, purpose: '2fa_pending', stage },
+    ACCESS_SECRET,
+    { algorithm: 'HS256', expiresIn: TWO_FA_PENDING_TTL }
+  );
+}
+
+function verifyTwoFactorPendingToken(token, expectedStage) {
+  const payload = jwt.verify(token, ACCESS_SECRET, { algorithms: ['HS256'] });
+  if (payload.purpose !== '2fa_pending' || payload.stage !== expectedStage) {
+    throw new Error('Sai loại token 2FA');
+  }
+  return payload;
+}
+
 function signRefreshToken({ userId, family, expiresInSeconds }) {
   // jti ngẫu nhiên riêng cho từng refresh token, dùng để hash & lưu DB.
   const jti = crypto.randomBytes(32).toString('hex');
@@ -52,6 +83,8 @@ function hashToken(rawValue) {
 module.exports = {
   signAccessToken,
   verifyAccessToken,
+  signTwoFactorPendingToken,
+  verifyTwoFactorPendingToken,
   signRefreshToken,
   verifyRefreshToken,
   hashToken

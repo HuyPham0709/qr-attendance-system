@@ -16,7 +16,19 @@ const userSchema = new mongoose.Schema({
   assignedEvents: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Event' }],
   isActive: { type: Boolean, default: true },
   failedLoginAttempts: { type: Number, default: 0 },
-  lockUntil: { type: Date, default: null }
+  lockUntil: { type: Date, default: null },
+
+  // --- 2FA (bắt buộc với super_admin — mục 1.1 spec) ---
+  // twoFactorSecret: secret TOTP THẬT, chỉ tồn tại sau khi user đã xác
+  // nhận setup thành công (confirm2FASetup). select:false vì đây là bí
+  // mật dùng để sinh mã, tuyệt đối không được lộ ra response bình thường.
+  twoFactorSecret: { type: String, select: false, default: null },
+  twoFactorEnabled: { type: Boolean, default: false },
+  // twoFactorTempSecret: secret TẠM sinh ra lúc bắt đầu flow setup (hiện
+  // QR để quét), CHƯA có hiệu lực đăng nhập cho tới khi user nhập đúng 1
+  // mã để xác nhận (confirm2FASetup) — tránh trường hợp secret bị treo
+  // nếu user bỏ dở giữa chừng, hoặc bị người khác thấy QR trên màn hình.
+  twoFactorTempSecret: { type: String, select: false, default: null }
 }, { timestamps: true });
 
 userSchema.methods.isLocked = function isLocked() {
