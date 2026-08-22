@@ -1,33 +1,58 @@
-// server/src/routes/attendee.routes.js
-//
-// Router riêng cho các route /api/attendees/:id/...
-//
-// THAY ĐỔI: 2 route QR trước đây để public tạm (comment TODO cũ) vì
-// auth.middleware.js chưa có trong repo. Giờ đã có, gắn theo đúng dự định
-// ban đầu trong comment TODO:
-// - getAttendeeQr: cho cả scanner_staff xem (cần hiển thị QR cho người
-//   không quét được để check-in thủ công/đối chiếu).
-// - revokeAttendeeQr: CHỈ organizer/super_admin — đây là thao tác nhạy
-//   cảm (thu hồi + phát hành QR mới), không nên để scanner_staff gọi.
-
 const express = require('express');
-const { getAttendeeQr, revokeAttendeeQr } = require('../controllers/qr.controller');
 const { authenticate, authorize } = require('../middlewares/auth.middleware');
+const { validate } = require('../middlewares/validate.middleware');
+const { scanRateLimiter } = require('../middlewares/rateLimiter.middleware');
+const multer = require('multer');
+const {
+  listAttendees,
+  getAttendee,
+  createAttendee,
+  updateAttendee,
+  deleteAttendee,
+  importAttendees
+} = require('../controllers/attendee.controller');
+const { scanCheckIn, manualCheckIn } = require('../controllers/checkin.controller');
+const { getAttendeeQr, revokeAttendeeQr } = require('../controllers/qr.controller');
+const {
+  createAttendeeSchema,
+  updateAttendeeSchema
+} = require('../validators/attendee.validator');
+const { scanCheckInSchema, manualCheckInSchema } = require('../validators/checkin.validator');
 
 const router = express.Router();
 
-router.get(
-  '/:id/qr',
-  authenticate,
-  authorize('scanner_staff', 'organizer', 'super_admin'),
-  getAttendeeQr
-);
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowed = [
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.ms-excel',
+      'text/csv',
+      'application/csv'
+    ];
+    if (allowed.includes(file.mimetype) || file.originalname.match(/\.(xlsx|xls|csv)$/i)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Chỉ chấp nhận file Excel (.xlsx, .xls) hoặc CSV'));
+    }
+  }
+});
 
-router.post(
-  '/:id/qr/revoke',
-  authenticate,
-  authorize('organizer', 'super_admin'),
-  revokeAttendeeQr
-);
+// Attendee CRUD
+router.get('/', authenticate, authorize('super_admin', 'organizer', 'scanner_staff'), listAttendees);
+router.get('/:id', authenticate, authorize('super_admin', 'organizer', 'scanner_staff'), getAttendee);
+router.post('/', authenticate, authorize('super_admin', 'organizer'), validate(createAttendeeSchema), createAttendee);
+router.patch('/:id', authenticate, authorize('super_admin', 'organizer'), validate(updateAttendeeSchema), updateAttendee);
+router.delete('/:id', authenticate, authorize('super_admin', 'organizer'), deleteAttendee);
+router.post('/import', authenticate, authorize('super_admin', 'organizer'), upload.single('file'), importAttendees);
+
+// Check-in
+router.post('/scan', authenticate, authorize('scanner_staff', 'organizer', 'super_admin'), scanRateLimiter, validate(scanCheckInSchema), scanCheckIn);
+router.post('/manual', authenticate, authorize('scanner_staff', 'organizer', 'super_admin'), validate(manualCheckInSchema), manualCheckIn);
+
+// QR
+router.get('/:id/qr', authenticate, authorize('scanner_staff', 'organizer', 'super_admin'), getAttendeeQr);
+router.post('/:id/qr/revoke', authenticate, authorize('organizer', 'super_admin'), revokeAttendeeQr);
 
 module.exports = router;
