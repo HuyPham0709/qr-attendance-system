@@ -1,0 +1,198 @@
+.ticket-stub {
+  display: grid;
+  grid-template-columns: 1fr auto 168px;
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.ticket-stub-info {
+  padding: 22px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ticket-stub-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brand-500);
+  font-weight: 500;
+}
+
+.ticket-stub-event {
+  font-size: 19px;
+  line-height: 1.25;
+}
+
+.ticket-stub-holder {
+  font-size: 14px;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.ticket-stub-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.ticket-stub-meta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.ticket-stub-status {
+  margin-top: 8px;
+}
+
+.ticket-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+
+.ticket-badge-pending {
+  background: var(--amber-050);
+  color: #92610B;
+}
+
+.ticket-badge-checked {
+  background: var(--teal-050);
+  color: #0C7A65;
+}
+
+.ticket-badge-cancelled {
+  background: var(--red-050);
+  color: #B91C1C;
+}
+
+/* Đường xé vé — vết khuyết bán nguyệt trên/dưới + đường đứt nét dọc,
+   mô phỏng đúng cấu trúc 1 tấm vé giấy thật (stub bên phải tách khỏi
+   phần thông tin bên trái). */
+.ticket-stub-perforation {
+  position: relative;
+  width: 0;
+  border-left: 2px dashed var(--border-strong);
+  margin: 14px 0;
+}
+
+.ticket-notch {
+  position: absolute;
+  left: -9px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--surface-50);
+  border: 1px solid var(--border);
+}
+
+.ticket-notch-top {
+  top: -23px;
+}
+
+.ticket-notch-bottom {
+  bottom: -23px;
+}
+
+.ticket-stub-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px 16px;
+  background: var(--surface-50);
+}
+
+.ticket-stub-qr img {
+  width: 128px;
+  height: 128px;
+  border-radius: var(--radius-sm);
+  background: #fff;
+  padding: 6px;
+  border: 1px solid var(--border);
+}
+
+.ticket-stub-qr-placeholder {
+  width: 128px;
+  height: 128px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--surface-100);
+  border-radius: var(--radius-sm);
+  text-align: center;
+  padding: 8px;
+}
+
+.ticket-stub-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.ticket-stub-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: var(--surface-0);
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-decoration: none;
+  transition: border-color var(--transition), color var(--transition);
+}
+
+.ticket-stub-action:hover {
+  border-color: var(--brand-500);
+  color: var(--brand-500);
+}
+
+.ticket-stub-action:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.spin {
+  animation: ticket-spin 0.8s linear infinite;
+}
+
+@keyframes ticket-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 560px) {
+  .ticket-stub {
+    grid-template-columns: 1fr;
+  }
+
+  .ticket-stub-perforation {
+    display: none;
+  }
+
+  .ticket-stub-qr {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+}

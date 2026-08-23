@@ -1,0 +1,42 @@
+/* ==========================================================================
+   Design tokens — QR Attendance / Attendee (trang công khai)
+   Cùng hệ màu/font với client-admin & client-scanner (cùng 1 sản phẩm),
+   nhưng dùng nền sáng vì đây là trang công khai mời người lạ đăng ký —
+   khác với app nghiệp vụ nền tối dành riêng cho nhân viên soát vé.
+   ========================================================================== */
+:root {
+  --ink-950: #0F1320;
+  --ink-900: #161B2C;
+  --surface-0: #FFFFFF;
+  --surface-50: #F6F7FB;
+  --surface-100: #ECEEF7;
+  --border: #E2E5F0;
+  --border-strong: #CBD0E3;
+
+  --brand-500: #5B5FEF;
+  --brand-600: #4A4DD1;
+  --brand-050: #EEEEFD;
+  --teal-500: #16C8A6;
+  --teal-050: #E4FBF6;
+  --amber-500: #F5A524;
+  --amber-050: #FEF4E2;
+  --red-500: #EF4444;
+  --red-050: #FDECEC;
+
+  --text-primary: #171A2B;
+  --text-secondary: #5A6079;
+  --text-muted: #8A90A6;
+  --text-on-brand: #FFFFFF;
+
+  --font-display: "Sora", "Inter", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 24px;
+  --shadow-card: 0 1px 2px rgba(15, 19, 32, 0.04), 0 8px 24px rgba(15, 19, 32, 0.06);
+  --shadow-pop: 0 12px 32px rgba(91, 95, 239, 0.18);
+  --transition: 160ms ease;
+  --content-width: 720px;
+}

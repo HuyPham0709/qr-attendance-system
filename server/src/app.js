@@ -36,6 +36,11 @@ const app = express();
 const allowedOrigins = [
   process.env.CLIENT_ADMIN_ORIGIN,
   process.env.CLIENT_SCANNER_ORIGIN,
+  // Trang đăng ký/tra cứu vé công khai của Attendee (client-attendee/) —
+  // cùng lý do CORS như 2 client kia: bắt buộc liệt kê origin cụ thể vì
+  // registration form không dùng cookie nhưng vẫn qua CORS của trình
+  // duyệt khi gọi fetch/axios sang server ở port khác.
+  process.env.CLIENT_ATTENDEE_ORIGIN,
   ...(process.env.CLIENT_ORIGIN ? process.env.CLIENT_ORIGIN.split(',') : [])
 ]
   .map((o) => o && o.trim())

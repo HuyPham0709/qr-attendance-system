@@ -12,9 +12,49 @@
 
 const express = require('express');
 const { getAttendeeQr, revokeAttendeeQr } = require('../controllers/qr.controller');
+const {
+  registerAttendee,
+  lookupTickets,
+  resendQrEmail
+} = require('../controllers/attendee.controller');
 const { authenticate, authorize } = require('../middlewares/auth.middleware');
+const { validate } = require('../middlewares/validate.middleware');
+const { attendeePublicRateLimiter } = require('../middlewares/rateLimiter.middleware');
+const {
+  registerAttendeeSchema,
+  lookupTicketsSchema,
+  resendQrEmailSchema
+} = require('../validators/attendee.validator');
 
 const router = express.Router();
+
+// --- Các route PUBLIC của Attendee (mục 1.4 + 2.1 #3, #7) ---
+// Không authenticate: attendee đăng ký/tra cứu không cần tài khoản.
+// Có rate limit theo IP để chống spam (xem rateLimiter.middleware.js).
+
+// POST /api/attendees/register — đăng ký công khai qua form self-registration
+router.post(
+  '/register',
+  attendeePublicRateLimiter,
+  validate(registerAttendeeSchema),
+  registerAttendee
+);
+
+// GET /api/attendees/lookup?email=...&eventId=... — tra cứu lại vé bằng email
+router.get(
+  '/lookup',
+  attendeePublicRateLimiter,
+  validate(lookupTicketsSchema, 'query'),
+  lookupTickets
+);
+
+// POST /api/attendees/resend — gửi lại email chứa QR
+router.post(
+  '/resend',
+  attendeePublicRateLimiter,
+  validate(resendQrEmailSchema),
+  resendQrEmail
+);
 
 router.get(
   '/:id/qr',

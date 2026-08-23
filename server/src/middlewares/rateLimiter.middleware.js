@@ -74,4 +74,25 @@ const twoFactorRateLimiter = rateLimit({
   }
 });
 
-module.exports = { scanRateLimiter, twoFactorRateLimiter };
+// Đăng ký / tra cứu vé / gửi lại email QR: 3 endpoint PUBLIC, không
+// authenticate, ai trên Internet cũng gọi được -> cần chặn spam đăng ký
+// hàng loạt và chặn lạm dụng "gửi lại email" để spam hòm thư người khác
+// (attendeeId tuy khó đoán nhưng không nên để gọi vô hạn lần). Theo IP là
+// đủ ở đây (khác /checkin/scan): không có deviceId, và mục tiêu chỉ là
+// giảm spam thông thường chứ không chống brute-force có chủ đích.
+const attendeePublicRateLimiter = rateLimit({
+  windowMs: WINDOW_MS,
+  max: 15,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    return fail(
+      res,
+      429,
+      'Bạn thao tác quá nhiều lần trong thời gian ngắn. Vui lòng thử lại sau ít phút.',
+      'RATE_LIMITED'
+    );
+  }
+});
+
+module.exports = { scanRateLimiter, twoFactorRateLimiter, attendeePublicRateLimiter };

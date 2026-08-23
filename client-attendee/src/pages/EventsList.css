@@ -1,0 +1,30 @@
+.page-intro {
+  margin-bottom: 28px;
+}
+
+.page-intro h1 {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.page-intro p {
+  font-size: 15px;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+  padding: 56px 20px;
+  color: var(--text-muted);
+  background: var(--surface-0);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+}
+
+.empty-state p {
+  font-size: 14px;
+  max-width: 320px;
+}
