@@ -1,18 +1,11 @@
-// server/src/validators/attendee.validator.js
-//
-// Zod schema cho các endpoint PUBLIC của Attendee (spec mục 1.4 + 2.1):
-// - Đăng ký công khai qua form self-registration (không cần tài khoản)
-// - Tra cứu vé bằng email + gửi lại email QR
-//
-// Đây là input do người lạ trên Internet gửi lên (không qua authenticate),
-// nên validate chặt hơn 1 chút so với các validator nội bộ (vd trim mọi
-// chuỗi, giới hạn độ dài field để tránh payload rác/spam).
 
 const { z } = require('zod');
 
 const objectId = z
   .string()
   .regex(/^[a-fA-F0-9]{24}$/, 'ID không hợp lệ (phải là MongoDB ObjectId 24 ký tự hex)');
+
+// --- PUBLIC ---
 
 const registerAttendeeSchema = z.object({
   eventId: objectId,
@@ -39,4 +32,24 @@ const resendQrEmailSchema = z.object({
   attendeeId: objectId
 });
 
-module.exports = { registerAttendeeSchema, lookupTicketsSchema, resendQrEmailSchema };
+// --- ADMIN ---
+
+const createAttendeeSchema = z.object({
+  eventId: z.string().regex(/^[a-fA-F0-9]{24}$/, 'eventId không hợp lệ'),
+  ticketTypeId: z.string().regex(/^[a-fA-F0-9]{24}$/, 'ticketTypeId không hợp lệ').optional(),
+  fullName: z.string().trim().min(1, 'Thiếu họ tên'),
+  email: z.string().trim().email('Email không hợp lệ'),
+  phone: z.string().trim().optional(),
+  status: z.enum(['registered', 'checked_in', 'checked_out', 'cancelled', 'no_show']).default('registered'),
+  customFields: z.any().optional()
+});
+
+const updateAttendeeSchema = createAttendeeSchema.partial().omit({ eventId: true });
+
+module.exports = {
+  registerAttendeeSchema,
+  lookupTicketsSchema,
+  resendQrEmailSchema,
+  createAttendeeSchema,
+  updateAttendeeSchema
+};
