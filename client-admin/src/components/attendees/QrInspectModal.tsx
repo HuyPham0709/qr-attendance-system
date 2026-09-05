@@ -2,19 +2,18 @@ import React from 'react'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { StatusBadge } from "../ui/Badges";
-import { Attendee } from '../../types'
 
 interface QrInspectModalProps {
-  attendee: Attendee | null
+  attendee: any | null
   onClose: () => void
   onResendEmail: (email: string) => void
-  onRevoke: (attendee: Attendee) => void
+  onRevoke: (attendee: any) => void
 }
 
 export function QrInspectModal({ attendee, onClose, onResendEmail, onRevoke }: QrInspectModalProps) {
   if (!attendee) return null
 
-  const initials = attendee.name.split(' ').map(n => n[0]).join('')
+  const initials = attendee.name?.split(' ').map((n: string) => n[0]).join('') || '??'
 
   return (
     <Modal open={!!attendee} onClose={onClose} title="QR Code Inspection" width="max-w-md">
