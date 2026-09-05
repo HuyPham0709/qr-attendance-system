@@ -1,36 +1,79 @@
 import React, { useState, useEffect } from 'react'
-import {
-  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell
-} from 'recharts'
-import { hourlyData, gateData, GATE_COLORS, recentActivity, events, organizations } from '../data/mockData'
+import { StatusBadge } from '../components/ui/Badges'
 import { StatusBadgeType } from '../types'
 import { AuthUser } from '../services/authService'
 import { isSuperAdmin } from '../utils/rbac'
+import { getOrganizerStats, getSystemStats } from '../services/dashboardService'
+import { listEvents } from '../services/eventService'
 
 interface DashboardScreenProps {
   user: AuthUser
 }
 
 export function DashboardScreen({ user }: DashboardScreenProps) {
-  // Mục 1.1 spec: Super Admin vận hành toàn nền tảng, không có 1 sự kiện
-  // cụ thể để "xem real-time" như Organizer — dashboard của họ là tổng
-  // quan hệ thống (số tổ chức, số sự kiện, tổ chức đang chờ duyệt...),
-  // KHÔNG lẫn với dashboard theo dõi check-in live của Organizer.
-  if (isSuperAdmin(user)) {
-    return <SystemOverviewDashboard />
+  const [stats, setStats] = useState<any>(null)
+  const [events, setEvents] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError('')
+
+    const fetchData = async () => {
+      try {
+        const [data, eventsRes] = await Promise.all([
+          isSuperAdmin(user) ? getSystemStats() : getOrganizerStats(),
+          listEvents({ limit: 100 })
+        ])
+        if (!cancelled) {
+          setStats(data)
+          setEvents(eventsRes.data || [])
+        }
+      } catch (err: any) {
+        if (!cancelled) setError(err.message || 'Không thể tải dữ liệu dashboard')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    fetchData()
+    return () => { cancelled = true }
+  }, [user])
+
+  if (loading) {
+    return (
+      <div className="p-6 flex items-center justify-center h-full">
+        <div className="text-sm text-slate-500">Đang tải dữ liệu...</div>
+      </div>
+    )
   }
-  return <OrganizerDashboard user={user} />
+
+  if (error) {
+    return (
+      <div className="p-6 flex items-center justify-center h-full">
+        <div className="text-sm text-red-500">{error}</div>
+      </div>
+    )
+  }
+
+  if (!stats) return null
+
+  if (isSuperAdmin(user)) {
+    return <SystemOverviewDashboard stats={stats} events={events} />
+  }
+  return <OrganizerDashboard user={user} stats={stats} />
 }
 
-function SystemOverviewDashboard() {
-  const activeOrgs = organizations.filter(o => o.status === 'Active').length
-  const pendingOrgs = organizations.filter(o => o.status === 'Pending').length
-  const lockedOrgs = organizations.filter(o => o.status === 'Locked').length
+function SystemOverviewDashboard({ stats, events }: { stats: any; events: any[] }) {
+  const activeOrgs = stats.activeOrgs || 0
+  const pendingOrgs = stats.pendingOrgs || 0
+  const lockedOrgs = stats.lockedOrgs || 0
 
   const statCards = [
-    { label: 'Organizations', value: String(organizations.length), sub: `${activeOrgs} active`, icon: '🏢', color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100' },
-    { label: 'Total Events (system)', value: String(events.length), sub: 'across all organizations', icon: '📅', color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-100' },
+    { label: 'Organizations', value: String(stats.totalOrgs || 0), sub: `${activeOrgs} active`, icon: '🏢', color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100' },
+    { label: 'Total Events (system)', value: String(stats.totalEvents || 0), sub: 'across all organizations', icon: '📅', color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-100' },
     { label: 'Pending Approval', value: String(pendingOrgs), sub: 'organizations awaiting review', icon: '⏳', color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100' },
     { label: 'Locked', value: String(lockedOrgs), sub: 'security / policy holds', icon: '🔒', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100' },
   ]
@@ -58,57 +101,67 @@ function SystemOverviewDashboard() {
       <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h3 className="text-sm font-semibold text-slate-900">Events across all organizations</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Read-only — event editing belongs to each Organizer</p>
+            <h3 className="text-sm font-semibold text-slate-900">System Events</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Total {stats.totalEvents || 0} events across all organizations</p>
           </div>
         </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100">
-              {['Event', 'Organization', 'Location', 'Status'].map(h => (
-                <th key={h} className="py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {events.map(e => (
-              <tr key={e.id} className="border-b border-slate-50 last:border-0">
-                <td className="py-3 font-semibold text-slate-800">{e.name}</td>
-                <td className="py-3 text-slate-600 text-xs">{e.organizationName}</td>
-                <td className="py-3 text-slate-500 text-xs truncate max-w-[200px]">{e.location}</td>
-                <td className="py-3 text-xs text-slate-500">{e.status}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {events.length === 0 ? (
+          <div className="text-sm text-slate-500 text-center py-8">No events found.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  {['Event', 'Status', 'Start / End', 'Location'].map(h => (
+                    <th key={h} className="py-2.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {events.map((e: any) => {
+                  const statusMap: Record<string, string> = {
+                    draft: 'Draft', published: 'Published', ongoing: 'Ongoing',
+                    completed: 'Completed', cancelled: 'Cancelled'
+                  }
+                  const displayStatus = statusMap[e.status] || e.status
+                  const start = e.startAt ? new Date(e.startAt).toLocaleString('vi-VN') : '--'
+                  const end = e.endAt ? new Date(e.endAt).toLocaleString('vi-VN') : '--'
+                  const location = e.location?.address || '--'
+                  return (
+                    <tr key={e._id} className="border-b border-slate-50 last:border-0">
+                      <td className="py-3 font-semibold text-slate-800">{e.name}</td>
+                      <td className="py-3 text-xs text-slate-500">{displayStatus}</td>
+                      <td className="py-3 text-xs text-slate-500 font-mono">
+                        <div>{start}</div>
+                        <div className="text-slate-400">{end}</div>
+                      </td>
+                      <td className="py-3 text-xs text-slate-600 max-w-[180px] truncate">{location}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
 }
 
-function OrganizerDashboard({ user }: { user: AuthUser }) {
-  const [tick, setTick] = useState(0)
-  useEffect(() => {
-    const id = setInterval(() => setTick(t => t + 1), 3000)
-    return () => clearInterval(id)
-  }, [])
-
+function OrganizerDashboard({ user, stats }: { user: AuthUser; stats: any }) {
   const statCards = [
-    { label: 'Total Registered', value: '1,240', sub: '+28 today', icon: '👥', color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100' },
-    { label: 'Total Checked-in', value: '756',   sub: `+${4 + (tick % 3)} last min`, icon: '✅', color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100' },
-    { label: 'Attendance Rate', value: '61.0%',  sub: '↑ 3.2% from last event', icon: '📈', color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-100' },
-    { label: 'Revoked / Issues', value: '14',    sub: '4 revoked, 10 pending', icon: '⚠️', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100' },
+    { label: 'Total Registered', value: String(stats.totalRegistered || 0), sub: 'from database', icon: '👥', color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100' },
+    { label: 'Total Checked-in', value: String(stats.totalCheckedIn || 0), sub: `attendance rate: ${stats.attendanceRate || '0%'}`, icon: '✅', color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100' },
+    { label: 'Attendance Rate', value: stats.attendanceRate || '0%', sub: 'real-time from DB', icon: '📈', color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-100' },
+    { label: 'Revoked / Issues', value: String(stats.revokedCount || 0), sub: 'revoked tickets', icon: '⚠️', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100' },
   ]
 
-  const liveStream = [...recentActivity]
-  if (tick % 2 === 0 && liveStream.length > 0) {
-    liveStream.unshift({ 
-      name: ['Noah Kim', 'Diana Torres', 'Leo Müller'][tick % 3], 
-      time: `17:4${2 + tick % 8}:${String(tick % 60).padStart(2,'0')}`, 
-      gate: ['Gate A – Main', 'Gate B – VIP'][tick % 2], 
-      status: 'Checked-in' as StatusBadgeType 
-    })
-  }
+  const liveStream = (stats.recentActivity || []).map((item: any) => ({
+    name: item.name,
+    time: item.time,
+    gate: item.gate,
+    status: item.status === 'Checked-in' ? 'Checked-in' : (item.status === 'Revoked' ? 'Revoked' : 'Registered') as StatusBadgeType
+  }))
 
   return (
     <div className="p-6 space-y-6">
@@ -133,57 +186,37 @@ function OrganizerDashboard({ user }: { user: AuthUser }) {
         ))}
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <div className="col-span-2 bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-900">Hourly Check-in Traffic</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Cumulative arrivals by hour</p>
-            </div>
-            <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full font-medium">Today</span>
+      <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">Recent Activity</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Latest check-ins from your event</p>
           </div>
-          <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={hourlyData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-              <defs>
-                <linearGradient id="emeraldGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#10B981" stopOpacity={0.25} />
-                  <stop offset="100%" stopColor="#10B981" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
-              <XAxis dataKey="time" tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: '#94A3B8' }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E2E8F0', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }} />
-              <Area type="monotone" dataKey="checkins" stroke="#10B981" strokeWidth={2.5} fill="url(#emeraldGrad)" dot={false} activeDot={{ r: 5, fill: '#10B981' }} />
-            </AreaChart>
-          </ResponsiveContainer>
         </div>
-
-        <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
-          <div className="mb-4">
-            <h3 className="text-sm font-semibold text-slate-900">Gate Distribution</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Check-ins per gate</p>
-          </div>
-          <ResponsiveContainer width="100%" height={160}>
-            <PieChart>
-              <Pie data={gateData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} paddingAngle={3} dataKey="value">
-                {gateData.map((_, i) => <Cell key={i} fill={GATE_COLORS[i]} />)}
-              </Pie>
-              <Tooltip contentStyle={{ fontSize: 11, borderRadius: 8 }} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="space-y-1.5 mt-2">
-            {gateData.map((g, i) => (
-              <div key={g.name} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: GATE_COLORS[i] }} />
-                  <span className="text-xs text-slate-600 truncate max-w-[100px]">{g.name}</span>
-                </div>
-                <span className="text-xs font-mono font-semibold text-slate-700">{g.value}</span>
-              </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-50">
+              {['Attendee Name', 'Time', 'Gate', 'Status'].map(h => (
+                <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-slate-400 uppercase tracking-wide">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {liveStream.slice(0, 7).map((row: any, i: number) => (
+              <tr key={i} className={`border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors ${i === 0 ? 'bg-emerald-50/40' : ''}`}>
+                <td className="px-5 py-3 font-medium text-slate-800">{row.name}</td>
+                <td className="px-5 py-3 font-mono text-xs text-slate-500">{row.time}</td>
+                <td className="px-5 py-3 text-slate-600 text-xs">{row.gate}</td>
+                <td className="px-5 py-3"><StatusBadge status={row.status} /></td>
+              </tr>
             ))}
-          </div>
-        </div>
+            {liveStream.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-5 py-8 text-center text-sm text-slate-400">No recent activity</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   )

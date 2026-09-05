@@ -1,12 +1,12 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { Modal } from '../components/ui/Modal'
 import { Toast } from '../components/ui/Toast'
 import { EventStatusBadge } from '../components/ui/Badges'
-import { events as allEvents } from '../data/mockData'
 import { AuthUser } from '../services/authService'
 import { isSuperAdmin, scopeByOrganization } from '../utils/rbac'
+import { listEvents, createEvent, updateEvent, deleteEvent } from '../services'
 
 interface EventsScreenProps {
   user: AuthUser
@@ -14,13 +14,9 @@ interface EventsScreenProps {
 
 export function EventsScreen({ user }: EventsScreenProps) {
   const readOnly = isSuperAdmin(user)
-
-  // Mục 1.2 spec: "Cần giới hạn chỉ thấy/sửa được sự kiện của chính mình
-  // (không thấy sự kiện tổ chức khác) → filter theo organizationId ở mọi
-  // query". Ở bản FE-only này filter được làm client-side; khi nối BE
-  // thật, BE PHẢI tự filter lại theo organizationId của token đăng nhập
-  // — không được tin tưởng bất kỳ organizationId nào FE gửi lên.
-  const events = scopeByOrganization(readOnly ? 'super_admin' : 'organizer', user.organizationId, allEvents)
+  const [events, setEvents] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   const [showDrawer, setShowDrawer] = useState(false)
   const [geoFence, setGeoFence] = useState(false)
@@ -36,7 +32,26 @@ export function EventsScreen({ user }: EventsScreenProps) {
     setTimeout(() => setToast(null), 3000)
   }
 
-  const ongoingCount = events.filter(e => e.status === 'Ongoing').length
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError('')
+
+    listEvents({ limit: 100 })
+      .then(res => {
+        if (!cancelled) setEvents(res.data)
+      })
+      .catch(err => {
+        if (!cancelled) setError(err.message || 'Không thể tải danh sách events')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => { cancelled = true }
+  }, [])
+
+  const ongoingCount = events.filter(e => e.status === 'ongoing' || e.status === 'Ongoing').length
 
   return (
     <div className="p-6 space-y-5">
@@ -63,6 +78,13 @@ export function EventsScreen({ user }: EventsScreenProps) {
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        {loading && (
+          <div className="px-5 py-10 text-center text-sm text-slate-400">Đang tải events...</div>
+        )}
+        {error && (
+          <div className="px-5 py-10 text-center text-sm text-red-500">{error}</div>
+        )}
+        {!loading && !error && (
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-100">
@@ -77,41 +99,54 @@ export function EventsScreen({ user }: EventsScreenProps) {
             </tr>
           </thead>
           <tbody>
-            {events.map(e => (
-              <tr key={e.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition-colors">
-                <td className="px-5 py-4 font-semibold text-slate-800">{e.name}</td>
-                {readOnly && <td className="px-5 py-4 text-xs text-slate-600">{e.organizationName}</td>}
-                <td className="px-5 py-4 text-xs text-slate-500 font-mono">
-                  <div>{e.start}</div>
-                  <div className="text-slate-400">{e.end}</div>
-                </td>
-                <td className="px-5 py-4 text-xs text-slate-600 max-w-[180px] truncate">{e.location}</td>
-                <td className="px-5 py-4">
-                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold">{e.gates}</span>
-                </td>
-                <td className="px-5 py-4"><EventStatusBadge status={e.status} /></td>
-                {!readOnly && (
-                  <td className="px-5 py-4">
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => setShowDrawer(true)} className="px-2.5 py-1.5 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors font-medium">Edit</button>
-                      <button onClick={() => showToast('Event duplicated successfully')} className="px-2.5 py-1.5 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors font-medium">Duplicate</button>
-                      <button className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
-                        <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
-                      </button>
-                    </div>
+            {events.map(e => {
+              const statusMap: Record<string, string> = {
+                draft: 'Draft', published: 'Published', ongoing: 'Ongoing',
+                completed: 'Completed', cancelled: 'Cancelled'
+              }
+              const displayStatus = statusMap[e.status] || e.status
+              const start = e.startAt ? new Date(e.startAt).toLocaleString('vi-VN') : '--'
+              const end = e.endAt ? new Date(e.endAt).toLocaleString('vi-VN') : '--'
+              const location = e.location?.address || '--'
+              const gatesCount = Array.isArray(e.gates) ? e.gates.length : 0
+
+              return (
+                <tr key={e._id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition-colors">
+                  <td className="px-5 py-4 font-semibold text-slate-800">{e.name}</td>
+                  {readOnly && <td className="px-5 py-4 text-xs text-slate-600">{e.organizationId || '--'}</td>}
+                  <td className="px-5 py-4 text-xs text-slate-500 font-mono">
+                    <div>{start}</div>
+                    <div className="text-slate-400">{end}</div>
                   </td>
-                )}
-              </tr>
-            ))}
-            {events.length === 0 && (
+                  <td className="px-5 py-4 text-xs text-slate-600 max-w-[180px] truncate">{location}</td>
+                  <td className="px-5 py-4">
+                    <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold">{gatesCount}</span>
+                  </td>
+                  <td className="px-5 py-4"><EventStatusBadge status={displayStatus as any} /></td>
+                  {!readOnly && (
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => setShowDrawer(true)} className="px-2.5 py-1.5 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors font-medium">Edit</button>
+                        <button onClick={() => showToast('Event duplicated successfully')} className="px-2.5 py-1.5 text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors font-medium">Duplicate</button>
+                        <button className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" /></svg>
+                        </button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              )
+            })}
+            {!loading && !error && events.length === 0 && (
               <tr>
                 <td colSpan={readOnly ? 5 : 5} className="px-5 py-10 text-center text-sm text-slate-400">
-                  No events found for this organization.
+                  No events found.
                 </td>
               </tr>
             )}
           </tbody>
         </table>
+        )}
       </div>
 
       {!readOnly && (
@@ -193,8 +228,27 @@ export function EventsScreen({ user }: EventsScreenProps) {
             </div>
 
             <div className="flex gap-2 pt-2">
-              <Button variant="secondary" onClick={() => setShowDrawer(false)} className="flex-1">Cancel</Button>
-              <Button variant="primary" onClick={() => { setShowDrawer(false); showToast('Event saved successfully') }} className="flex-1">Save Event</Button>
+              <Button variant="secondary" onClick={() => { setShowDrawer(false); setGates(['Gate A – Main', 'Gate B – VIP']); setTickets([{ name: 'General Admission', qty: '500', price: '$49' }]); }} className="flex-1">Cancel</Button>
+              <Button variant="primary" onClick={async () => {
+                try {
+                  const payload: any = {
+                    name: 'New Event',
+                    description: '',
+                    status: 'draft',
+                    startAt: new Date().toISOString(),
+                    endAt: new Date(Date.now() + 86400000).toISOString(),
+                    location: { address: '', geo: { lat: 0, lng: 0 }, geoFenceRadiusMeters: 200 },
+                    settings: { allowMultipleCheckIn: multiCheckin, requireGeoFence: requireGeo, qrTokenTTLMinutes: 5, checkInWindowMinutes: 60 },
+                    gates: gates.map((name, i) => ({ name, code: `GATE_${i}` }))
+                  }
+                  await createEvent(payload)
+                  showToast('Event saved successfully')
+                  setShowDrawer(false)
+                  listEvents({ limit: 100 }).then(res => setEvents(res.data))
+                } catch (err: any) {
+                  showToast(err.message || 'Có lỗi xảy ra')
+                }
+              }} className="flex-1">Save Event</Button>
             </div>
           </div>
         </Modal>
