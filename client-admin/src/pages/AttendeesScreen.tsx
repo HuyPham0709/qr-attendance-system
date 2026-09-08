@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, ChangeEvent } from 'react'
 import * as XLSX from 'xlsx'
 import { Button } from '../components/ui/Button'
 import { StatusBadge } from "../components/ui/Badges";
@@ -6,9 +6,9 @@ import { Toast } from '../components/ui/Toast'
 import { SearchIcon } from '../components/ui/Icons'
 import { QrInspectModal } from '../components/attendees/QrInspectModal'
 import { ImportAttendeesModal } from '../components/attendees/ImportAttendeesModal'
-import { attendees as initialAttendees } from '../data/mockData'
 import { AttendeeItem } from '../types'
 import { AuthUser } from '../services/authService'
+import { listAttendees, importAttendees as importAttendeesApi, listEvents } from '../services'
 
 interface AttendeesScreenProps {
   // Nhận user để sẵn sàng cho khi nối BE thật: mọi request list/import/
@@ -21,13 +21,17 @@ interface AttendeesScreenProps {
 }
 
 export function AttendeesScreen({ user }: AttendeesScreenProps) {
-  const [attendeeList, setAttendeeList] = useState<AttendeeItem[]>(initialAttendees)
+  const [attendeeList, setAttendeeList] = useState<AttendeeItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
   const [selected, setSelected] = useState<number[]>([])
   const [showImport, setShowImport] = useState(false)
   const [showQR, setShowQR] = useState<AttendeeItem | null>(null)
   const [statusFilter, setStatusFilter] = useState('All')
   const [searchTerm, setSearchTerm] = useState('')
   const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
+  const [currentEventId, setCurrentEventId] = useState('')
+  const [events, setEvents] = useState<any[]>([])
 
   function showToast(msg: string, type: 'success' | 'error' = 'success') {
     setToast({ msg, type })
@@ -38,10 +42,47 @@ export function AttendeesScreen({ user }: AttendeesScreenProps) {
     setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id])
   }
 
-  // Lọc dữ liệu theo trạng thái và từ khóa tìm kiếm
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError('')
+
+    Promise.all([
+      listEvents({ limit: 100 }),
+      listAttendees({ limit: 100 })
+    ])
+      .then(([eventsRes, attendeesRes]) => {
+        if (!cancelled) {
+          setEvents(eventsRes.data)
+          if (eventsRes.data.length > 0 && !currentEventId) {
+            setCurrentEventId(eventsRes.data[0]._id)
+          }
+          const mapped = attendeesRes.data.map((a: any) => ({
+            ...a,
+            id: a._id,
+            name: a.fullName,
+            email: a.email,
+            ticket: a.ticketTypeId?.name || 'General Admission',
+            status: a.status === 'checked_in' ? 'Checked-in' : a.status === 'cancelled' ? 'Revoked' : a.status === 'no_show' ? 'No Show' : 'Registered',
+            timestamp: a.checkIn?.checkInAt ? new Date(a.checkIn.checkInAt).toLocaleString('vi-VN') : '--',
+            gate: a.checkIn?.gate || '--'
+          }))
+          setAttendeeList(mapped as any)
+        }
+      })
+      .catch(err => {
+        if (!cancelled) setError(err.message || 'Không thể tải danh sách attendees')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => { cancelled = true }
+  }, [])
+
   const filtered = attendeeList.filter(a => {
     const matchesStatus = statusFilter === 'All' ? true : a.status === statusFilter
-    const matchesSearch = 
+    const matchesSearch =
       a.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       a.email.toLowerCase().includes(searchTerm.toLowerCase())
     return matchesStatus && matchesSearch
@@ -97,7 +138,7 @@ export function AttendeesScreen({ user }: AttendeesScreenProps) {
   }
 
   // CHỨC NĂNG NHẬN DỮ LIỆU IMPORT KHỎI MODAL
-  const handleImportComplete = (msg: string, importedAttendees: AttendeeItem[]) => {
+  const handleImportComplete = async (msg: string, importedAttendees: AttendeeItem[]) => {
     if (importedAttendees && importedAttendees.length > 0) {
       setAttendeeList(prev => [...importedAttendees, ...prev])
     }
@@ -111,10 +152,21 @@ export function AttendeesScreen({ user }: AttendeesScreenProps) {
         <div>
           <h1 className="text-xl font-bold text-slate-900">Attendee Engine</h1>
           <p className="text-sm text-slate-500">
-            {attendeeList.length} attendees · TechSummit 2026{user.organizationName ? ` · ${user.organizationName}` : ''}
+            {attendeeList.length} attendees {events.length > 0 && `· ${events.find(e => e._id === currentEventId)?.name || 'Select Event'}`}{user.organizationName ? ` · ${user.organizationName}` : ''}
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {events.length > 0 && (
+            <select
+              value={currentEventId}
+              onChange={e => setCurrentEventId(e.target.value)}
+              className="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-700 bg-white focus:border-emerald-400 outline-none"
+            >
+              {events.map(e => (
+                <option key={e._id} value={e._id}>{e.name}</option>
+              ))}
+            </select>
+          )}
           {/* Nút Export Excel Thật */}
           <Button variant="secondary" onClick={handleExportExcel}>
             <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
@@ -175,6 +227,13 @@ export function AttendeesScreen({ user }: AttendeesScreenProps) {
 
       {/* Table */}
       <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+        {loading && (
+          <div className="px-5 py-10 text-center text-sm text-slate-400">Đang tải attendees...</div>
+        )}
+        {error && (
+          <div className="px-5 py-10 text-center text-sm text-red-500">{error}</div>
+        )}
+        {!loading && !error && (
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-100">
@@ -227,25 +286,16 @@ export function AttendeesScreen({ user }: AttendeesScreenProps) {
                 </td>
               </tr>
             ))}
+            {!loading && !error && filtered.length === 0 && (
+              <tr>
+                <td colSpan={9} className="px-5 py-10 text-center text-sm text-slate-400">
+                  No attendees found.
+                </td>
+              </tr>
+            )}
           </tbody>
         </table>
-
-        {/* Pagination */}
-        <div className="flex items-center justify-between px-5 py-3 border-t border-slate-50 bg-slate-50/50">
-          <span className="text-xs text-slate-400">Showing 1–{filtered.length} of {attendeeList.length} attendees</span>
-          <div className="flex items-center gap-1">
-            {[1, 2, 3, '…', 12].map((p, i) => (
-              <button
-                key={i}
-                className={`min-w-[28px] h-7 px-2 rounded-lg text-xs font-medium transition-colors ${
-                  p === 1 ? 'bg-emerald-500 text-white' : 'text-slate-500 hover:bg-slate-100'
-                }`}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Modals */}
