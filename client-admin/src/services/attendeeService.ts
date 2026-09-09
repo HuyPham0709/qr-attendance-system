@@ -69,3 +69,23 @@ export async function importAttendees(eventId: string, file: File): Promise<Impo
   formData.append('eventId', eventId);
   return upload<ImportResult>('/api/attendees/import', formData);
 }
+
+export async function getAttendeeQr(id: string): Promise<{ dataUrl: string }> {
+  return get<{ dataUrl: string }>(`/api/attendees/${id}/qr?format=dataurl`);
+}
+
+export async function revokeAttendeeQr(id: string): Promise<{ attendeeId: string; qrVersion: number }> {
+  return post<{ attendeeId: string; qrVersion: number }>(`/api/attendees/${id}/qr/revoke`, {});
+}
+
+export async function resendQrEmail(attendeeId: string): Promise<{ emailSent: boolean; qrDataUrl: string }> {
+  return post<{ emailSent: boolean; qrDataUrl: string }>('/api/attendees/resend', { attendeeId });
+}
+
+export async function manualCheckIn(data: {
+  attendeeId: string;
+  reason: string;
+  gate?: string;
+}): Promise<AttendeeItem> {
+  return post<AttendeeItem>('/api/attendees/manual', data);
+}

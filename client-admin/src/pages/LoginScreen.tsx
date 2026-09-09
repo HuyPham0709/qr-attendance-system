@@ -126,7 +126,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   return (
     <div className="min-h-screen flex bg-slate-50">
       {/* Left Hero Section */}
-      <div className="hidden lg:flex w-1/2 bg-[#1E293B] flex-col justify-between p-12 relative overflow-hidden">
+      <div className="hidden lg:flex w-1/2 bg-slate-800 flex-col justify-between p-12 relative overflow-hidden">
         <div
           className="absolute inset-0 opacity-5"
           style={{
@@ -167,18 +167,18 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                   ✓
                 </div>
                 <div>
-                  <div className="text-white text-sm font-semibold">Check-in Verified</div>
-                  <div className="text-slate-400 text-xs">Priya Sharma · Gate B – VIP</div>
+                  <div className="text-white text-sm font-semibold">Secure check-in workspace</div>
+                  <div className="text-slate-400 text-xs">Live data appears after sign-in</div>
                 </div>
-                <div className="ml-auto text-emerald-400 text-xs font-mono">09:14:22</div>
+                <div className="ml-auto text-emerald-400 text-xs font-mono">LIVE</div>
               </div>
             </div>
 
             <div className="grid grid-cols-3 gap-3">
               {[
-                { label: 'Registered', n: '1,240' },
-                { label: 'Checked-in', n: '756' },
-                { label: 'Rate', n: '61%' },
+                { label: 'Registered', n: '--' },
+                { label: 'Checked-in', n: '--' },
+                { label: 'Rate', n: '--' },
               ].map(s => (
                 <div key={s.label} className="bg-white/5 border border-white/10 rounded-xl p-3 text-center">
                   <div className="text-white font-bold text-lg">{s.n}</div>

@@ -68,7 +68,7 @@ async function registerAttendee(req, res, next) {
     }
 
     if (ticketTypeId) {
-      const ticketType = await TicketType.findById(ticketTypeId);
+      const ticketType = await TicketType.findOne({ _id: ticketTypeId, isActive: { $ne: false } });
       if (!ticketType || String(ticketType.eventId) !== String(eventId)) {
         return fail(res, 400, 'Loại vé không hợp lệ cho sự kiện này', 'TICKET_TYPE_NOT_FOUND');
       }
@@ -78,7 +78,7 @@ async function registerAttendee(req, res, next) {
         // update -> loại race condition khi nhiều người đăng ký cùng lúc
         // giành vé cuối cùng (xem giải thích trong TicketType.model.js).
         reservedTicketType = await TicketType.findOneAndUpdate(
-          { _id: ticketTypeId, $expr: { $lt: ['$quantitySold', '$quantityLimit'] } },
+          { _id: ticketTypeId, isActive: { $ne: false }, $expr: { $lt: ['$quantitySold', '$quantityLimit'] } },
           { $inc: { quantitySold: 1 } },
           { new: true }
         );
@@ -86,8 +86,8 @@ async function registerAttendee(req, res, next) {
           return fail(res, 409, 'Loại vé này đã hết chỗ.', 'TICKET_SOLD_OUT');
         }
       } else {
-        reservedTicketType = await TicketType.findByIdAndUpdate(
-          ticketTypeId,
+        reservedTicketType = await TicketType.findOneAndUpdate(
+          { _id: ticketTypeId, isActive: { $ne: false } },
           { $inc: { quantitySold: 1 } },
           { new: true }
         );
@@ -259,9 +259,8 @@ async function listAttendees(req, res, next) {
       filter.eventId = eventId;
     }
 
-    if (status) {
-      filter.status = status;
-    }
+    if (status) filter.status = status;
+    else filter.status = { $ne: 'cancelled' };
 
     if (search) {
       filter.$or = [
@@ -408,8 +407,9 @@ async function deleteAttendee(req, res, next) {
       return fail(res, 403, 'Bạn không có quyền xóa attendee này', 'FORBIDDEN');
     }
 
-    await Attendee.findByIdAndDelete(id);
-    return ok(res, { message: 'Attendee đã được xóa' });
+    // Giữ attendee để bảo toàn lịch sử/audit và làm QR hiện tại mất hiệu lực.
+    await Attendee.findByIdAndUpdate(id, { $set: { status: 'cancelled' }, $inc: { qrVersion: 1 } });
+    return ok(res, { message: 'Attendee đã được hủy' });
   } catch (err) {
     next(err);
   }
