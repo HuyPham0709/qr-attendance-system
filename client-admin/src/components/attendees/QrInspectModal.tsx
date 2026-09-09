@@ -8,9 +8,11 @@ interface QrInspectModalProps {
   onClose: () => void
   onResendEmail: (email: string) => void
   onRevoke: (attendee: any) => void
+  qrDataUrl?: string
+  qrLoading?: boolean
 }
 
-export function QrInspectModal({ attendee, onClose, onResendEmail, onRevoke }: QrInspectModalProps) {
+export function QrInspectModal({ attendee, onClose, onResendEmail, onRevoke, qrDataUrl, qrLoading }: QrInspectModalProps) {
   if (!attendee) return null
 
   const initials = attendee.name?.split(' ').map((n: string) => n[0]).join('') || '??'
@@ -19,7 +21,7 @@ export function QrInspectModal({ attendee, onClose, onResendEmail, onRevoke }: Q
     <Modal open={!!attendee} onClose={onClose} title="QR Code Inspection" width="max-w-md">
       <div className="space-y-5">
         <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-slate-400 to-slate-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+          <div className="w-10 h-10 rounded-full bg-linear-to-br from-slate-400 to-slate-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
             {initials}
           </div>
           <div>
@@ -31,29 +33,11 @@ export function QrInspectModal({ attendee, onClose, onResendEmail, onRevoke }: Q
           </div>
         </div>
 
-        {/* Matrix QR visual element */}
         <div className="flex justify-center">
           <div className="p-4 bg-white border-2 border-slate-200 rounded-2xl inline-block">
-            <div className="w-40 h-40 grid grid-cols-7 gap-px">
-              {[...Array(49)].map((_, i) => {
-                const corners = [0, 1, 2, 3, 4, 5, 6, 7, 13, 14, 20, 21, 27, 28, 34, 35, 41, 42, 43, 44, 45, 46, 47, 48]
-                const inner = [8, 9, 10, 15, 16, 17, 22, 23, 24]
-                return (
-                  <div
-                    key={i}
-                    className={`rounded-sm ${
-                      corners.includes(i)
-                        ? 'bg-slate-900'
-                        : inner.includes(i)
-                        ? 'bg-emerald-500'
-                        : i % 2 === 0
-                        ? 'bg-slate-900'
-                        : 'bg-white'
-                    }`}
-                  />
-                )
-              })}
-            </div>
+            {qrLoading && <div className="w-40 h-40 flex items-center justify-center text-xs text-slate-400">Đang tải QR...</div>}
+            {!qrLoading && qrDataUrl && <img src={qrDataUrl} alt={`QR code của ${attendee.name}`} className="w-40 h-40" />}
+            {!qrLoading && !qrDataUrl && <div className="w-40 h-40 flex items-center justify-center text-xs text-red-500">Không tải được QR</div>}
           </div>
         </div>
 

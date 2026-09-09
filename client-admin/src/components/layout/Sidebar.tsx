@@ -52,7 +52,7 @@ export function Sidebar({ screen, onNavigate, user, onLogout }: SidebarProps) {
   const navItems = navForRole(role)
 
   return (
-    <aside className="w-60 h-screen bg-[#1E293B] flex flex-col shrink-0 relative z-10">
+    <aside className="w-60 h-screen bg-slate-800 flex flex-col shrink-0 relative z-10">
       <div className="px-5 pt-6 pb-4 border-b border-white/10">
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center shadow-sm shadow-emerald-500/40">
@@ -81,27 +81,11 @@ export function Sidebar({ screen, onNavigate, user, onLogout }: SidebarProps) {
             </button>
           )
         })}
-        <div className="pt-4 mt-2 border-t border-white/10">
-          <p className="px-2 text-[10px] font-semibold text-slate-500 uppercase tracking-widest mb-2">System</p>
-          {[
-            { label: 'Reports', icon: '📊', visible: true },
-            // Mục 1.1 spec: "Cấu hình tham số hệ thống" (giới hạn dung
-            // lượng, số sự kiện/gói...) là việc của Super Admin vận hành
-            // toàn nền tảng — Organizer chỉ quản lý sự kiện của chính họ
-            // (mục 1.2), không có lý do nghiệp vụ để thấy mục này.
-            { label: 'Settings', icon: '⚙️', visible: role === 'super_admin' },
-          ].filter(item => item.visible).map(item => (
-            <button key={item.label} className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-slate-400 hover:text-white hover:bg-white/8 transition-all duration-150">
-              <span className="text-xs">{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
-        </div>
       </nav>
 
       <div className="px-3 pb-4 border-t border-white/10 pt-3">
         <div className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-white/8 transition-colors group">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
+          <div className="w-8 h-8 rounded-full bg-linear-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
             {initialsFor(user)}
           </div>
           <div className="flex-1 min-w-0">

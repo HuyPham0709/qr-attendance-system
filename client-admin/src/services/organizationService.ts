@@ -4,9 +4,9 @@ export interface OrganizationItem {
   _id: string;
   name: string;
   slug: string;
-  plan: 'free' | 'pro' | 'enterprise';
-  status: 'active' | 'pending' | 'locked';
-  ownerEmail: string;
+  ownerId?: string;
+  isActive?: boolean;
+  status?: 'active' | 'pending' | 'locked';
   eventsCount: number;
   createdAt: string;
   updatedAt: string;
@@ -17,11 +17,12 @@ export interface OrganizationsResponse {
   pagination: { page: number; limit: number; total: number; pages: number };
 }
 
-export async function listOrganizations(params?: { page?: number; limit?: number; search?: string }): Promise<OrganizationsResponse> {
+export async function listOrganizations(params?: { page?: number; limit?: number; search?: string; includeDeleted?: boolean }): Promise<OrganizationsResponse> {
   const query = new URLSearchParams();
   if (params?.page) query.set('page', String(params.page));
   if (params?.limit) query.set('limit', String(params.limit));
   if (params?.search) query.set('search', params.search);
+  if (params?.includeDeleted) query.set('includeDeleted', 'true');
   return get<OrganizationsResponse>(`/api/organizations?${query.toString()}`);
 }
 
@@ -29,7 +30,7 @@ export async function getOrganization(id: string): Promise<OrganizationItem> {
   return get<OrganizationItem>(`/api/organizations/${id}`);
 }
 
-export async function createOrganization(data: Partial<OrganizationItem>): Promise<OrganizationItem> {
+export async function createOrganization(data: Partial<OrganizationItem> & { slug: string }): Promise<OrganizationItem> {
   return post<OrganizationItem>('/api/organizations', data);
 }
 

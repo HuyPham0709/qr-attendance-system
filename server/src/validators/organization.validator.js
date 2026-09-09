@@ -5,6 +5,7 @@ const createOrganizationSchema = z.object({
   slug: z.string().trim().min(1, 'Thiếu slug'),
   plan: z.enum(['free', 'pro', 'enterprise']).default('free'),
   status: z.enum(['active', 'pending', 'locked']).default('active'),
+  isActive: z.boolean().optional(),
   ownerEmail: z.string().trim().email('Email không hợp lệ').optional()
 });
 
