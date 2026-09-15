@@ -22,10 +22,19 @@ export interface SystemStats {
   activeOrgs: number;
 }
 
+export interface CheckinsTimeline {
+  hour: number;
+  count: number;
+}
+
 export async function getOrganizerStats(): Promise<DashboardStats> {
   return get<DashboardStats>('/api/dashboard/stats');
 }
 
 export async function getSystemStats(): Promise<SystemStats> {
   return get<SystemStats>('/api/dashboard/system-stats');
+}
+
+export async function getCheckinsTimeline(eventId: string): Promise<CheckinsTimeline[]> {
+  return get<CheckinsTimeline[]>(`/api/dashboard/checkins-timeline?eventId=${encodeURIComponent(eventId)}`);
 }

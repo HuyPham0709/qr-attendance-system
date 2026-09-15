@@ -20,9 +20,15 @@ let io = null;
  * @returns {Server}
  */
 function initSocket(httpServer) {
+  const origins = [
+    process.env.CLIENT_ORIGIN,
+    process.env.CLIENT_ADMIN_ORIGIN,
+    process.env.CLIENT_SCANNER_ORIGIN
+  ].filter(Boolean);
+
   io = new Server(httpServer, {
     cors: {
-      origin: process.env.CLIENT_ORIGIN,
+      origin: origins.length === 1 ? origins[0] : origins,
       credentials: true
     }
   });

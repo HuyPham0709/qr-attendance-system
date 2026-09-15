@@ -8,7 +8,7 @@ import { AuthUser } from '../services/authService'
 import { createEvent, deleteEvent, EventItem, listEvents, updateEvent } from '../services/eventService'
 import { isSuperAdmin } from '../utils/rbac'
 
-interface EventsScreenProps { user: AuthUser }
+interface EventsScreenProps { user: AuthUser; initialSearch?: string }
 
 interface EventForm {
   name: string
@@ -32,7 +32,7 @@ function toInputDate(value?: string) {
   return value ? new Date(value).toISOString().slice(0, 16) : ''
 }
 
-export function EventsScreen({ user }: EventsScreenProps) {
+export function EventsScreen({ user, initialSearch = '' }: EventsScreenProps) {
   const readOnly = isSuperAdmin(user)
   const [events, setEvents] = useState<EventItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -43,6 +43,7 @@ export function EventsScreen({ user }: EventsScreenProps) {
   const [editing, setEditing] = useState<EventItem | null>(null)
   const [form, setForm] = useState<EventForm>(emptyForm)
   const [gateInput, setGateInput] = useState('')
+  const [search, setSearch] = useState(initialSearch)
 
   function showToast(message: string, type: 'success' | 'error' = 'success') {
     setToast({ message, type }); setTimeout(() => setToast(null), 3000)
@@ -56,6 +57,7 @@ export function EventsScreen({ user }: EventsScreenProps) {
   }
 
   useEffect(() => { loadEvents() }, [])
+  useEffect(() => { setSearch(initialSearch) }, [initialSearch])
 
   function openCreate() {
     setEditing(null); setForm({ ...emptyForm, gates: [...emptyForm.gates] }); setGateInput(''); setShowForm(true)
@@ -113,13 +115,18 @@ export function EventsScreen({ user }: EventsScreenProps) {
   }
 
   const ongoingCount = events.filter(event => event.status === 'ongoing').length
+  const visibleEvents = events.filter(event => {
+    const query = search.trim().toLowerCase()
+    return !query || event.name.toLowerCase().includes(query) || event.location?.address?.toLowerCase().includes(query)
+  })
 
   return <div className="p-6 space-y-5">
     <div className="flex items-center justify-between"><div><h1 className="text-xl font-bold text-slate-900">Event Management</h1><p className="text-sm text-slate-500">{events.length} events · {ongoingCount} ongoing{readOnly && ' · read-only system-wide view'}</p></div>{!readOnly && <Button variant="primary" onClick={openCreate}>+ Create Event</Button>}</div>
-    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+    <Input placeholder="Search events or locations..." value={search} onChange={setSearch} />
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-x-auto">
       {loading && <div className="px-5 py-10 text-center text-sm text-slate-400">Đang tải events...</div>}
       {error && <div className="px-5 py-10 text-center text-sm text-red-500">{error}</div>}
-      {!loading && !error && <table className="w-full text-sm"><thead><tr className="bg-slate-50 border-b border-slate-100">{['Event Name', ...(readOnly ? ['Organization'] : []), 'Start / End', 'Location', 'Gates', 'Status', ...(readOnly ? [] : ['Actions'])].map(header => <th key={header} className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{header}</th>)}</tr></thead><tbody>{events.map(event => <tr key={event._id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60"><td className="px-5 py-4 font-semibold text-slate-800">{event.name}</td>{readOnly && <td className="px-5 py-4 text-xs text-slate-600">{event.organizationId}</td>}<td className="px-5 py-4 text-xs text-slate-500 font-mono"><div>{new Date(event.startAt).toLocaleString('vi-VN')}</div><div className="text-slate-400">{new Date(event.endAt).toLocaleString('vi-VN')}</div></td><td className="px-5 py-4 text-xs text-slate-600 max-w-45 truncate">{event.location?.address || '--'}</td><td className="px-5 py-4"><span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold">{event.gates?.length || 0}</span></td><td className="px-5 py-4"><EventStatusBadge status={event.status as any} /></td>{!readOnly && <td className="px-5 py-4"><div className="flex items-center gap-1"><button onClick={() => openEdit(event)} className="px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Edit</button><button onClick={() => duplicateEvent(event)} className="px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Duplicate</button><button onClick={() => removeEvent(event)} className="px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg font-medium">Cancel</button></div></td>}</tr>)}{events.length === 0 && <tr><td colSpan={readOnly ? 6 : 6} className="px-5 py-10 text-center text-sm text-slate-400">No events found.</td></tr>}</tbody></table>}
+      {!loading && !error && <table className="w-full text-sm min-w-[640px]"><thead><tr className="bg-slate-50 border-b border-slate-100">{['Event Name', ...(readOnly ? ['Organization'] : []), 'Start / End', 'Location', 'Gates', 'Status', ...(readOnly ? [] : ['Actions'])].map(header => <th key={header} className="px-5 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{header}</th>)}</tr></thead><tbody>{visibleEvents.map(event => <tr key={event._id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/60"><td className="px-5 py-4 font-semibold text-slate-800">{event.name}</td>{readOnly && <td className="px-5 py-4 text-xs text-slate-600">{event.organizationId}</td>}<td className="px-5 py-4 text-xs text-slate-500 font-mono"><div>{new Date(event.startAt).toLocaleString('vi-VN')}</div><div className="text-slate-400">{new Date(event.endAt).toLocaleString('vi-VN')}</div></td><td className="px-5 py-4 text-xs text-slate-600 max-w-45 truncate">{event.location?.address || '--'}</td><td className="px-5 py-4"><span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold">{event.gates?.length || 0}</span></td><td className="px-5 py-4"><EventStatusBadge status={event.status as any} /></td>{!readOnly && <td className="px-5 py-4"><div className="flex items-center gap-1"><button onClick={() => openEdit(event)} className="px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Edit</button><button onClick={() => duplicateEvent(event)} className="px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-lg font-medium">Duplicate</button><button onClick={() => removeEvent(event)} className="px-2.5 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg font-medium">Cancel</button></div></td>}</tr>)}{visibleEvents.length === 0 && <tr><td colSpan={readOnly ? 6 : 6} className="px-5 py-10 text-center text-sm text-slate-400">No events found.</td></tr>}</tbody></table>}
     </div>
     {!readOnly && <Modal open={showForm} onClose={() => setShowForm(false)} title={editing ? 'Edit Event' : 'Create New Event'} width="max-w-2xl"><div className="space-y-5"><Input label="Event Title" value={form.name} onChange={value => updateForm('name', value)} placeholder="TechSummit 2026" /><Input label="Description" value={form.description} onChange={value => updateForm('description', value)} placeholder="Event description" /><div className="grid grid-cols-2 gap-3"><Input label="Start Date & Time" type="datetime-local" value={form.startAt} onChange={value => updateForm('startAt', value)} /><Input label="End Date & Time" type="datetime-local" value={form.endAt} onChange={value => updateForm('endAt', value)} /></div><Input label="Venue Address" value={form.address} onChange={value => updateForm('address', value)} placeholder="Venue address" /><div className="grid grid-cols-2 gap-3"><div><label className="block text-sm font-medium text-slate-700 mb-1.5">Status</label><select value={form.status} onChange={event => updateForm('status', event.target.value as EventItem['status'])} className="w-full px-3.5 py-2.5 text-sm rounded-lg border border-slate-200 bg-white"><option value="draft">Draft</option><option value="published">Published</option><option value="ongoing">Ongoing</option><option value="cancelled">Cancelled</option></select></div><Input label="QR TTL (minutes)" type="number" value={form.qrTokenTTLMinutes} onChange={value => updateForm('qrTokenTTLMinutes', value)} /></div><div><label className="block text-sm font-medium text-slate-700 mb-1.5">Gates</label><div className="flex gap-2"><input value={gateInput} onChange={event => setGateInput(event.target.value)} placeholder="Gate name" className="flex-1 px-3 py-2.5 text-sm border border-slate-200 rounded-lg" /><Button variant="secondary" size="sm" onClick={() => { if (gateInput.trim()) { updateForm('gates', [...form.gates, gateInput.trim()]); setGateInput('') } }}>Add</Button></div><div className="flex flex-wrap gap-2 mt-2">{form.gates.map((gate, index) => <span key={`${gate}-${index}`} className="px-3 py-1 bg-slate-100 rounded-full text-xs text-slate-700">{gate}<button className="ml-2 text-slate-400" onClick={() => updateForm('gates', form.gates.filter((_, itemIndex) => itemIndex !== index))}>x</button></span>)}</div></div><div className="space-y-2"><label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={form.allowMultipleCheckIn} onChange={event => updateForm('allowMultipleCheckIn', event.target.checked)} /> Allow multiple check-in</label><label className="flex items-center gap-2 text-sm text-slate-700"><input type="checkbox" checked={form.requireGeoFence} onChange={event => updateForm('requireGeoFence', event.target.checked)} /> Require geo-fence check</label></div><div className="flex gap-2"><Button variant="secondary" onClick={() => setShowForm(false)} className="flex-1">Cancel</Button><Button variant="primary" disabled={saving} onClick={saveEvent} className="flex-1">{saving ? 'Saving...' : 'Save Event'}</Button></div></div></Modal>}
     {toast && <Toast message={toast.message} type={toast.type} />}

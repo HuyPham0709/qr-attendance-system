@@ -1,4 +1,4 @@
-import { download, get, upload } from './api';
+import { del, download, get, patch, post, upload } from './api';
 
 export interface AuditLogItem {
   _id: string;
@@ -59,4 +59,25 @@ export async function importAuditLogs(file: File): Promise<{ imported: number; f
   const formData = new FormData();
   formData.append('file', file);
   return upload<{ imported: number; failed: number }>('/api/reports/audit/import', formData);
+}
+
+export interface AuditLogMutation {
+  eventId: string;
+  attendeeId: string;
+  result: AuditLogItem['result'];
+  gate?: string;
+  deviceId?: string;
+  clientTimestamp?: string;
+}
+
+export async function createAuditLog(data: AuditLogMutation): Promise<AuditLogItem> {
+  return post<AuditLogItem>('/api/reports/audit/logs', data);
+}
+
+export async function updateAuditLog(id: string, data: AuditLogMutation): Promise<AuditLogItem> {
+  return patch<AuditLogItem>(`/api/reports/audit/logs/${id}`, data);
+}
+
+export async function deleteAuditLog(id: string): Promise<{ message: string }> {
+  return del<{ message: string }>(`/api/reports/audit/logs/${id}`);
 }

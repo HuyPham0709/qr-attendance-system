@@ -38,6 +38,9 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   // không quét được QR — hành vi chuẩn của mọi app 2FA ngoài đời.
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('')
   const [manualSecret, setManualSecret] = useState('')
+  const [showForgotPassword, setShowForgotPassword] = useState(false)
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotMessage, setForgotMessage] = useState('')
 
   function handleAuthUser(user: AuthUser) {
     if (user.role === 'scanner_staff') {
@@ -252,7 +255,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                 <input type="checkbox" className="rounded border-slate-300 text-emerald-500" />
                 Remember me
               </label>
-              <button type="button" className="text-sm text-emerald-600 hover:text-emerald-700 font-medium">
+              <button type="button" onClick={() => { setForgotEmail(email); setForgotMessage(''); setShowForgotPassword(true) }} className="text-sm text-emerald-600 hover:text-emerald-700 font-medium">
                 Forgot password?
               </button>
             </div>
@@ -290,6 +293,20 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
           </form>
         </div>
       </div>
+
+      <Modal open={showForgotPassword} onClose={() => setShowForgotPassword(false)} title="Forgot password?">
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500">Enter your account email. Password reset requests are handled by your organization administrator.</p>
+          <Input label="Email Address" type="email" value={forgotEmail} onChange={setForgotEmail} placeholder="admin@qrattend.io" />
+          {forgotMessage && <p className="text-xs text-emerald-600">{forgotMessage}</p>}
+          <Button variant="primary" className="w-full" onClick={() => {
+            if (!forgotEmail.trim()) return
+            setForgotMessage('Request recorded. Please contact your organization administrator to complete the reset.')
+          }}>
+            Request password reset
+          </Button>
+        </div>
+      </Modal>
 
       {/* 2FA Verification Modal — tài khoản Super Admin đã bật 2FA từ trước */}
       <Modal open={step === '2fa-verify'} onClose={() => setStep('credentials')} title="Two-Factor Authentication">

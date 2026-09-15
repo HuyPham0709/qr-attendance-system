@@ -135,8 +135,8 @@ export function OrganizationsScreen() {
         <Button variant="primary" onClick={openCreate}>+ Tạo tổ chức</Button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-x-auto">
+        <table className="w-full text-sm min-w-[640px]">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-100">
               {['Organization', 'Events*', 'Created', 'Status', 'Actions'].map(h => (
@@ -157,7 +157,7 @@ export function OrganizationsScreen() {
                   </div>
                 </td>
                 <td className="px-5 py-4">
-                  <span title="Server hiện trả eventsCount = 0; số liệu sẽ được cập nhật khi backend tính thật." className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold">{o.eventsCount}</span>
+                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-slate-100 text-slate-700 text-xs font-bold">{o.eventsCount}</span>
                 </td>
                 <td className="px-5 py-4 text-xs text-slate-500 font-mono">{new Date(o.createdAt).toLocaleDateString('vi-VN')}</td>
                 <td className="px-5 py-4">
@@ -179,7 +179,6 @@ export function OrganizationsScreen() {
           </tbody>
         </table>
         <div className="flex items-center justify-between px-5 py-3 border-t border-slate-50 bg-slate-50/50 text-xs text-slate-400">
-          <span>* eventsCount hiện chưa được backend tính chính xác.</span>
           <div className="flex items-center gap-2"><button disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</button><span>{page} / {pages}</span><button disabled={page >= pages} onClick={() => setPage(p => p + 1)}>Next</button></div>
         </div>
       </div>

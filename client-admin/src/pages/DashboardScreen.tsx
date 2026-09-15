@@ -3,9 +3,10 @@ import { StatusBadge } from '../components/ui/Badges'
 import { StatusBadgeType } from '../types'
 import { AuthUser } from '../services/authService'
 import { isSuperAdmin } from '../utils/rbac'
-import { getOrganizerStats, getSystemStats } from '../services/dashboardService'
+import { getOrganizerStats, getSystemStats, getCheckinsTimeline } from '../services/dashboardService'
 import { listEvents } from '../services/eventService'
 import { CheckinUpdate, joinEvent } from '../services/socketService'
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
 
 interface DashboardScreenProps {
   user: AuthUser
@@ -86,7 +87,7 @@ function SystemOverviewDashboard({ stats, events }: { stats: any; events: any[] 
         <p className="text-sm text-slate-500">Platform-wide status · Super Admin</p>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map(s => (
           <div key={s.label} className={`bg-white rounded-2xl border ${s.border} p-5 shadow-sm hover:shadow-md transition-shadow`}>
             <div className="flex items-start justify-between mb-4">
@@ -153,6 +154,9 @@ function OrganizerDashboard({ user, stats, events }: { user: AuthUser; stats: an
   const [totalCheckedIn, setTotalCheckedIn] = useState(Number(stats.totalCheckedIn || 0))
   const [liveStream, setLiveStream] = useState<any[]>(stats.recentActivity || [])
   const [selectedEventId, setSelectedEventId] = useState(events[0]?._id || '')
+  const [timeline, setTimeline] = useState<{ hour: number; count: number }[]>([])
+  const [chartLoading, setChartLoading] = useState(false)
+  const [chartError, setChartError] = useState('')
 
   useEffect(() => {
     const eventId = selectedEventId
@@ -167,6 +171,17 @@ function OrganizerDashboard({ user, stats, events }: { user: AuthUser; stats: an
       }, ...current].slice(0, 7))
     }
     return joinEvent(eventId, handleCheckin)
+  }, [selectedEventId])
+
+  useEffect(() => {
+    const eventId = selectedEventId
+    if (!eventId) return
+    setChartLoading(true)
+    setChartError('')
+    getCheckinsTimeline(eventId)
+      .then(data => setTimeline(data))
+      .catch(err => setChartError(err.message || 'Không thể tải biểu đồ'))
+      .finally(() => setChartLoading(false))
   }, [selectedEventId])
 
   const statCards = [
@@ -190,12 +205,12 @@ function OrganizerDashboard({ user, stats, events }: { user: AuthUser; stats: an
         <p className="text-sm text-slate-500">
           {events.find(event => event._id === selectedEventId)?.name || 'Event'} · Live attendance monitoring{user.organizationName ? ` · ${user.organizationName}` : ''}
         </p>
-        <select value={selectedEventId} onChange={event => { setSelectedEventId(event.target.value); setLiveStream([]) }} className="mt-3 px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white">
+        <select value={selectedEventId} onChange={event => { setSelectedEventId(event.target.value); setLiveStream([]) }} className="mt-3 px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white w-full sm:w-auto">
           {events.map(event => <option key={event._id} value={event._id}>{event.name}</option>)}
         </select>
       </div>
 
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map(s => (
           <div key={s.label} className={`bg-white rounded-2xl border ${s.border} p-5 shadow-sm hover:shadow-md transition-shadow`}>
             <div className="flex items-start justify-between mb-4">
@@ -207,6 +222,32 @@ function OrganizerDashboard({ user, stats, events }: { user: AuthUser; stats: an
             <div className={`mt-1 text-xs font-medium ${s.color}`}>{s.sub}</div>
           </div>
         ))}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900">Check-ins theo giờ</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Biểu đồ lưu lượng check-in trong ngày</p>
+          </div>
+        </div>
+        {chartLoading ? (
+          <div className="text-sm text-slate-500 text-center py-8">Đang tải biểu đồ...</div>
+        ) : chartError ? (
+          <div className="text-sm text-red-500 text-center py-8">{chartError}</div>
+        ) : (
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={timeline}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="hour" tick={{ fontSize: 12 }} tickFormatter={(v) => `${String(v).padStart(2, '0')}:00`} label={{ value: 'Giờ', position: 'insideBottom', offset: -5 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 12 }} label={{ value: 'Số lượt', angle: -90, position: 'insideLeft' }} />
+                <Tooltip formatter={(value: any) => [value, 'Check-ins']} labelFormatter={(label) => `${String(label).padStart(2, '0')}:00`} />
+                <Bar dataKey="count" fill="#10b981" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-100 p-5 shadow-sm">

@@ -4,6 +4,7 @@ const Organization = require('../models/Organization.model');
 const CheckInLog = require('../models/CheckInLog.model');
 const { ok, fail } = require('../utils/apiResponse');
 const { authenticate, authorize } = require('../middlewares/auth.middleware');
+const mongoose = require('mongoose');
 
 async function getOrganizerStats(req, res, next) {
   try {
@@ -84,7 +85,54 @@ async function getSystemStats(req, res, next) {
   }
 }
 
+async function getCheckinsTimeline(req, res, next) {
+  try {
+    const { eventId } = req.query;
+
+    if (!eventId || !mongoose.Types.ObjectId.isValid(eventId)) {
+      return fail(res, 400, 'eventId không hợp lệ', 'INVALID_ID');
+    }
+
+    const event = await Event.findById(eventId).select('organizationId').lean();
+    if (!event) {
+      return fail(res, 404, 'Không tìm thấy sự kiện', 'EVENT_NOT_FOUND');
+    }
+
+    if (req.user.role === 'organizer' && 
+        event.organizationId.toString() !== req.user.organizationId.toString()) {
+      return fail(res, 403, 'Bạn không có quyền xem sự kiện này', 'FORBIDDEN');
+    }
+
+    if (req.user.role === 'scanner_staff') {
+      return fail(res, 403, 'Bạn không có quyền xem biểu đồ', 'FORBIDDEN');
+    }
+
+    const timeline = await CheckInLog.aggregate([
+      { $match: { eventId: mongoose.Types.ObjectId(eventId), result: 'success' } },
+      {
+        $group: {
+          _id: { $hour: '$createdAt' },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { '_id': 1 } },
+      {
+        $project: {
+          _id: 0,
+          hour: '$_id',
+          count: 1
+        }
+      }
+    ]);
+
+    return ok(res, timeline);
+  } catch (err) {
+    next(err);
+  }
+}
+
 module.exports = {
   getOrganizerStats,
-  getSystemStats
+  getSystemStats,
+  getCheckinsTimeline
 };

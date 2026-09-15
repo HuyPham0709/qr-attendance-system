@@ -3,6 +3,7 @@ const multer = require('multer');
 const { authenticate, authorize } = require('../middlewares/auth.middleware');
 const { exportAuditReport } = require('../controllers/report.controller');
 const { importAuditLogs } = require('../controllers/auditImport.controller');
+const { createAuditLog, updateAuditLog, deleteAuditLog } = require('../controllers/auditCrud.controller');
 
 const router = express.Router();
 const upload = multer({
@@ -15,5 +16,8 @@ const upload = multer({
 
 router.get('/audit', authenticate, authorize('super_admin', 'organizer'), exportAuditReport);
 router.post('/audit/import', authenticate, authorize('super_admin', 'organizer'), upload.single('file'), importAuditLogs);
+router.post('/audit/logs', authenticate, authorize('super_admin', 'organizer'), createAuditLog);
+router.patch('/audit/logs/:id', authenticate, authorize('super_admin', 'organizer'), updateAuditLog);
+router.delete('/audit/logs/:id', authenticate, authorize('super_admin', 'organizer'), deleteAuditLog);
 
 module.exports = router;

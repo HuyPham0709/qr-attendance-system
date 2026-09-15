@@ -13,6 +13,7 @@ const { verifyAccessToken } = require('../utils/token.util');
 const { ACCESS_COOKIE } = require('../utils/cookie.util');
 const { fail } = require('../utils/apiResponse');
 const User = require('../models/User.model');
+const Event = require('../models/Event.model');
 
 function authenticate(req, res, next) {
   const token = req.cookies?.[ACCESS_COOKIE];
@@ -59,19 +60,17 @@ function authorize(...allowedRoles) {
  * authorize() ở trên chỉ check ROLE, không check scanner_staff có thực sự
  * được gán vào ĐÚNG event đang thao tác hay không — hàm này bù chỗ đó.
  *
+ * super_admin được qua mọi sự kiện. Organizer chỉ được qua event thuộc
+ * organizationId của mình. Scanner staff chỉ được qua event được gán trong
+ * assignedEvents.
+ *
  * Đọc `assignedEvents` trực tiếp từ DB (không đọc từ req.user/JWT payload)
  * vì access token thường sống vài phút-vài giờ; nếu Organizer gỡ gán 1
  * scanner_staff khỏi event giữa lúc token còn hạn, token cũ vẫn phải mất
  * quyền ngay ở lượt quét tiếp theo — không thể chờ token hết hạn mới hết
  * quyền.
  *
- * super_admin và organizer: chưa bị chặn ở đây (đúng phạm vi việc #3 bạn
- * yêu cầu, chỉ nói tới assignedEvents của scanner_staff). Việc organizer
- * chỉ được thao tác event thuộc organizationId của mình là một lỗ hổng
- * khác, CHƯA sửa trong lần này — ghi chú lại như 1 TODO riêng, không gộp
- * chung để tránh đoán sai phạm vi.
- *
- * @param {{id: string, role: string}} user - req.user
+ * @param {{id: string, role: string, organizationId: string} | null} user - req.user
  * @param {string} eventId - eventId THẬT lấy từ DB (vd attendee.eventId),
  *   không dùng eventId decode thô chưa verify chữ ký, để tránh bị giả
  *   mạo qua token.
@@ -80,10 +79,14 @@ function authorize(...allowedRoles) {
 async function ensureEventAccess(user, eventId) {
   if (!user || !eventId) return false;
 
-  if (user.role === 'super_admin' || user.role === 'organizer') {
-    // TODO (ngoài phạm vi sửa lần này): organizer nên bị giới hạn theo
-    // event.organizationId === user.organizationId.
+  if (user.role === 'super_admin') {
     return true;
+  }
+
+  if (user.role === 'organizer') {
+    const event = await Event.findById(eventId).select('organizationId').lean();
+    if (!event) return false;
+    return event.organizationId.toString() === user.organizationId.toString();
   }
 
   if (user.role === 'scanner_staff') {

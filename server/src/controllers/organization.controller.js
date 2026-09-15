@@ -27,10 +27,12 @@ async function listOrganizations(req, res, next) {
       Organization.countDocuments(filter)
     ]);
 
-    const orgsWithCount = orgs.map(org => ({
-      ...org,
-      eventsCount: 0
-    }));
+    const orgsWithCount = await Promise.all(
+      orgs.map(async org => ({
+        ...org,
+        eventsCount: await Event.countDocuments({ organizationId: org._id, status: { $ne: 'cancelled' } })
+      }))
+    );
 
     return ok(res, {
       data: orgsWithCount,

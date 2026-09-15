@@ -13,6 +13,7 @@ import { canAccessScreen, defaultScreenFor, AdminRole } from './utils/rbac'
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('login')
+  const [globalSearch, setGlobalSearch] = useState('')
   // Trước đây chỉ có 1 boolean `authed` — không biết ai vừa đăng nhập,
   // nên toàn app luôn render y hệt nhau (kể cả sidebar hardcode
   // "Super Admin"/admin@qrattend.io) bất kể tài khoản thật là gì. Giờ
@@ -51,15 +52,21 @@ export default function App() {
     setScreen(next)
   }
 
+  function handleGlobalSearch(nextScreen: Screen, query: string) {
+    if (!canAccessScreen(role, nextScreen)) return
+    setGlobalSearch(query)
+    setScreen(nextScreen)
+  }
+
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar screen={safeScreen} onNavigate={handleNavigate} user={user} onLogout={handleLogout} />
       <div className="flex-1 flex flex-col min-w-0">
-        <TopBar user={user} />
+        <TopBar user={user} onNavigate={handleGlobalSearch} />
         <main className="flex-1 overflow-y-auto">
           {safeScreen === 'dashboard' && <DashboardScreen user={user} />}
-          {safeScreen === 'events' && <EventsScreen user={user} />}
-          {safeScreen === 'attendees' && <AttendeesScreen user={user} />}
+          {safeScreen === 'events' && <EventsScreen user={user} initialSearch={globalSearch} />}
+          {safeScreen === 'attendees' && <AttendeesScreen user={user} initialSearch={globalSearch} />}
           {safeScreen === 'staff-audit' && <StaffAuditScreen user={user} />}
           {safeScreen === 'organizations' && <OrganizationsScreen />}
         </main>
