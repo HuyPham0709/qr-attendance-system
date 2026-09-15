@@ -11,9 +11,9 @@ async function listOrganizations(req, res, next) {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const limit = Math.min(100, parseInt(req.query.limit) || 20);
     const skip = (page - 1) * limit;
-    const { search } = req.query;
+    const { search, includeDeleted } = req.query;
 
-    const filter = {};
+    const filter = includeDeleted === 'true' ? {} : { isActive: { $ne: false } };
     if (search) {
       filter.name = { $regex: search, $options: 'i' };
     }
@@ -108,8 +108,8 @@ async function deleteOrganization(req, res, next) {
       return fail(res, 404, 'Không tìm thấy tổ chức', 'ORGANIZATION_NOT_FOUND');
     }
 
-    await Organization.findByIdAndDelete(id);
-    return ok(res, { message: 'Tổ chức đã được xóa' });
+    await Organization.findByIdAndUpdate(id, { status: 'locked', isActive: false });
+    return ok(res, { message: 'Tổ chức đã được khóa' });
   } catch (err) {
     next(err);
   }

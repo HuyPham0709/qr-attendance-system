@@ -34,7 +34,7 @@ async function listEvents(req, res, next) {
     const limit = Math.min(100, parseInt(req.query.limit) || 10);
     const skip = (page - 1) * limit;
 
-    const filter = {};
+    const filter = { status: { $ne: 'cancelled' } };
 
     if (req.user && req.user.role === 'organizer') {
       filter.organizationId = req.user.organizationId;

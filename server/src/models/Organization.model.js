@@ -5,6 +5,7 @@ const organizationSchema = new mongoose.Schema({
   slug: { type: String, unique: true, required: true },
   plan: { type: String, enum: ['free', 'pro', 'enterprise'], default: 'free' },
   status: { type: String, enum: ['active', 'pending', 'locked'], default: 'active' },
+  isActive: { type: Boolean, default: true, index: true },
   ownerEmail: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now }
 });

@@ -38,6 +38,21 @@ export function del<T>(path: string): Promise<T> {
   return request<T>(path, { method: 'DELETE' });
 }
 
+export async function download(path: string): Promise<Blob> {
+  const response = await fetch(`${API_BASE_URL}${path}`, { credentials: 'include' });
+  if (!response.ok) {
+    let message = 'Không thể tải file';
+    try {
+      const result = await response.json();
+      message = result.message || result.error || message;
+    } catch {
+      // Keep the generic download error when the server did not return JSON.
+    }
+    throw new Error(message);
+  }
+  return response.blob();
+}
+
 export function upload<T>(path: string, formData: FormData): Promise<T> {
   return fetch(`${API_BASE_URL}${path}`, {
     method: 'POST',

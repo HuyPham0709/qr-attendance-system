@@ -1,321 +1,86 @@
-import React, { useState, useEffect, ChangeEvent } from 'react'
+import React, { useEffect, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { Button } from '../components/ui/Button'
-import { StatusBadge } from "../components/ui/Badges";
+import { Input } from '../components/ui/Input'
+import { Modal } from '../components/ui/Modal'
+import { StatusBadge } from '../components/ui/Badges'
 import { Toast } from '../components/ui/Toast'
-import { SearchIcon } from '../components/ui/Icons'
-import { QrInspectModal } from '../components/attendees/QrInspectModal'
 import { ImportAttendeesModal } from '../components/attendees/ImportAttendeesModal'
-import { AttendeeItem } from '../types'
+import { ManualCheckInModal } from '../components/attendees/ManualCheckInModal'
+import { QrInspectModal } from '../components/attendees/QrInspectModal'
 import { AuthUser } from '../services/authService'
-import { listAttendees, importAttendees as importAttendeesApi, listEvents } from '../services'
+import { AttendeeItem, createAttendee, deleteAttendee, getAttendeeQr, listAttendees, manualCheckIn, resendQrEmail, revokeAttendeeQr, updateAttendee } from '../services/attendeeService'
+import { EventItem, listEvents } from '../services/eventService'
 
-interface AttendeesScreenProps {
-  // Nhận user để sẵn sàng cho khi nối BE thật: mọi request list/import/
-  // export ở màn này phải kèm theo scope tổ chức của Organizer đang đăng
-  // nhập (mục 1.2 spec — filter theo organizationId ở mọi query). Màn
-  // hình này chỉ Organizer vào được (xem rbac.ts) — Super Admin không có
-  // trong nav vì đây là dữ liệu nhạy cảm của attendee (least privilege,
-  // mục 1.1 spec).
-  user: AuthUser
-}
+interface AttendeesScreenProps { user: AuthUser }
+const statusLabel = (status: AttendeeItem['status']) => status === 'checked_in' ? 'Checked-in' : status === 'cancelled' ? 'Revoked' : status === 'no_show' ? 'No Show' : 'Registered'
 
 export function AttendeesScreen({ user }: AttendeesScreenProps) {
-  const [attendeeList, setAttendeeList] = useState<AttendeeItem[]>([])
+  const [attendees, setAttendees] = useState<AttendeeItem[]>([])
+  const [events, setEvents] = useState<EventItem[]>([])
+  const [eventId, setEventId] = useState('')
+  const [search, setSearch] = useState('')
+  const [status, setStatus] = useState('')
+  const [page, setPage] = useState(1)
+  const [pages, setPages] = useState(1)
+  const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
-  const [selected, setSelected] = useState<number[]>([])
   const [showImport, setShowImport] = useState(false)
-  const [showQR, setShowQR] = useState<AttendeeItem | null>(null)
-  const [statusFilter, setStatusFilter] = useState('All')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
-  const [currentEventId, setCurrentEventId] = useState('')
-  const [events, setEvents] = useState<any[]>([])
+  const [formMode, setFormMode] = useState<'create' | 'edit' | null>(null)
+  const [target, setTarget] = useState<AttendeeItem | null>(null)
+  const [manualTarget, setManualTarget] = useState<AttendeeItem | null>(null)
+  const [qrTarget, setQrTarget] = useState<AttendeeItem | null>(null)
+  const [qrDataUrl, setQrDataUrl] = useState('')
+  const [qrLoading, setQrLoading] = useState(false)
+  const [name, setName] = useState('')
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
-  function showToast(msg: string, type: 'success' | 'error' = 'success') {
-    setToast({ msg, type })
-    setTimeout(() => setToast(null), 3000)
+  const notify = (message: string, type: 'success' | 'error' = 'success') => { setToast({ message, type }); setTimeout(() => setToast(null), 3000) }
+  const closeForm = () => { setFormMode(null); setTarget(null); setName(''); setEmail(''); setPhone('') }
+  const openCreate = () => { setName(''); setEmail(''); setPhone(''); setTarget(null); setFormMode('create') }
+  const openEdit = (item: AttendeeItem) => { setName(item.fullName); setEmail(item.email); setPhone(item.phone || ''); setTarget(item); setFormMode('edit') }
+
+  useEffect(() => { listEvents({ limit: 100 }).then(result => { setEvents(result.data); if (result.data[0]) setEventId(current => current || result.data[0]._id) }).catch(err => setError(err.message || 'Không thể tải events')) }, [])
+
+  async function loadAttendees() {
+    if (!eventId) return
+    setLoading(true); setError('')
+    try { const result = await listAttendees({ page, limit: 20, eventId, search: search.trim() || undefined, status: status || undefined }); setAttendees(result.data); setPages(result.pagination.pages); setTotal(result.pagination.total) }
+    catch (err: any) { setError(err.message || 'Không thể tải attendees') }
+    finally { setLoading(false) }
   }
+  useEffect(() => { loadAttendees() }, [eventId, page, search, status])
 
-  function toggleSelect(id: number) {
-    setSelected(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id])
+  async function saveAttendee() {
+    if (!name.trim() || !email.trim()) { notify('Vui lòng nhập họ tên và email', 'error'); return }
+    setSaving(true)
+    try {
+      if (formMode === 'edit' && target) await updateAttendee(target._id, { fullName: name.trim(), email: email.trim(), phone: phone.trim() || undefined })
+      else await createAttendee({ eventId, fullName: name.trim(), email: email.trim(), phone: phone.trim() || undefined })
+      notify(formMode === 'edit' ? 'Đã cập nhật attendee' : 'Đã tạo attendee'); closeForm(); await loadAttendees()
+    } catch (err: any) { notify(err.message || 'Không thể lưu attendee', 'error') }
+    finally { setSaving(false) }
   }
+  async function removeAttendee(item: AttendeeItem) { if (!window.confirm(`Xóa attendee "${item.fullName}"?`)) return; try { await deleteAttendee(item._id); notify('Đã xóa attendee'); await loadAttendees() } catch (err: any) { notify(err.message || 'Không thể xóa attendee', 'error') } }
+  async function openQr(item: AttendeeItem) { setQrTarget(item); setQrDataUrl(''); setQrLoading(true); try { setQrDataUrl((await getAttendeeQr(item._id)).dataUrl) } catch (err: any) { notify(err.message || 'Không thể tải QR', 'error') } finally { setQrLoading(false) } }
+  async function resend(item: AttendeeItem) { try { const result = await resendQrEmail(item._id); notify(result.emailSent ? `Đã gửi lại QR tới ${item.email}` : 'Đã xử lý resend ở chế độ phát triển') } catch (err: any) { notify(err.message || 'Không thể gửi lại email', 'error') } }
+  async function revoke(item: AttendeeItem) { if (!window.confirm(`Thu hồi QR của ${item.fullName}?`)) return; try { const result = await revokeAttendeeQr(item._id); notify(`Đã revoke QR, version mới v${result.qrVersion}`); setQrTarget(null); await loadAttendees() } catch (err: any) { notify(err.message || 'Không thể revoke QR', 'error') } }
+  async function confirmManual(reason: string) { if (!manualTarget) return; try { await manualCheckIn({ attendeeId: manualTarget._id, reason }); setManualTarget(null); notify('Đã manual check-in'); await loadAttendees() } catch (err: any) { notify(err.message || 'Không thể manual check-in', 'error') } }
+  function exportExcel() { if (!attendees.length) { notify('Không có dữ liệu để xuất', 'error'); return }; const sheet = XLSX.utils.json_to_sheet(attendees.map((item, index) => ({ STT: index + 1, ID: item._id, Name: item.fullName, Email: item.email, Status: item.status, QRVersion: item.qrVersion, CheckIn: item.checkIn?.checkInAt || '', Gate: item.checkIn?.gate || '' }))); const book = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(book, sheet, 'Attendees'); XLSX.writeFile(book, `attendees-${new Date().toISOString().slice(0, 10)}.xlsx`); notify('Đã xuất Excel trang hiện tại') }
 
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    setError('')
-
-    Promise.all([
-      listEvents({ limit: 100 }),
-      listAttendees({ limit: 100 })
-    ])
-      .then(([eventsRes, attendeesRes]) => {
-        if (!cancelled) {
-          setEvents(eventsRes.data)
-          if (eventsRes.data.length > 0 && !currentEventId) {
-            setCurrentEventId(eventsRes.data[0]._id)
-          }
-          const mapped = attendeesRes.data.map((a: any) => ({
-            ...a,
-            id: a._id,
-            name: a.fullName,
-            email: a.email,
-            ticket: a.ticketTypeId?.name || 'General Admission',
-            status: a.status === 'checked_in' ? 'Checked-in' : a.status === 'cancelled' ? 'Revoked' : a.status === 'no_show' ? 'No Show' : 'Registered',
-            timestamp: a.checkIn?.checkInAt ? new Date(a.checkIn.checkInAt).toLocaleString('vi-VN') : '--',
-            gate: a.checkIn?.gate || '--'
-          }))
-          setAttendeeList(mapped as any)
-        }
-      })
-      .catch(err => {
-        if (!cancelled) setError(err.message || 'Không thể tải danh sách attendees')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-
-    return () => { cancelled = true }
-  }, [])
-
-  const filtered = attendeeList.filter(a => {
-    const matchesStatus = statusFilter === 'All' ? true : a.status === statusFilter
-    const matchesSearch =
-      a.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      a.email.toLowerCase().includes(searchTerm.toLowerCase())
-    return matchesStatus && matchesSearch
-  })
-
-  // CHỨC NĂNG XUẤT EXCEL (EXPORT)
-  const handleExportExcel = () => {
-    // Nếu có dòng được chọn thì xuất dòng chọn, ngược lại xuất toàn bộ danh sách đã lọc
-    const targetList = selected.length > 0 
-      ? attendeeList.filter(a => selected.includes(Number(a.id)))
-      : filtered
-
-    if (targetList.length === 0) {
-      showToast('Không có dữ liệu để xuất Excel', 'error')
-      return
-    }
-
-    // Format dữ liệu xuất ra Excel
-    const excelData = targetList.map((a, index) => ({
-      'STT': index + 1,
-      'Mã ID': a.id,
-      'Họ và Tên': a.name,
-      'Email': a.email,
-      'Loại Vé': a.ticket,
-      'QR Version': `v${a.qrVersion}`,
-      'Trạng Thái': a.status,
-      'Thời Gian Check-in': a.timestamp || '--',
-      'Cổng Check-in': a.gate || '--'
-    }))
-
-    // Tạo workbook Excel bằng SheetJS
-    const worksheet = XLSX.utils.json_to_sheet(excelData)
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Attendees')
-
-    // Thiết lập độ rộng cột
-    worksheet['!cols'] = [
-      { wch: 6 },
-      { wch: 15 },
-      { wch: 25 },
-      { wch: 30 },
-      { wch: 20 },
-      { wch: 12 },
-      { wch: 18 },
-      { wch: 20 },
-      { wch: 15 },
-    ]
-
-    // Xuất file về máy
-    const fileName = `Danh_Sach_Nguoi_Tham_Du_${new Date().toISOString().slice(0, 10)}.xlsx`
-    XLSX.writeFile(workbook, fileName)
-    showToast(`Đã xuất ${targetList.length} hàng ra file Excel!`, 'success')
-  }
-
-  // CHỨC NĂNG NHẬN DỮ LIỆU IMPORT KHỎI MODAL
-  const handleImportComplete = async (msg: string, importedAttendees: AttendeeItem[]) => {
-    if (importedAttendees && importedAttendees.length > 0) {
-      setAttendeeList(prev => [...importedAttendees, ...prev])
-    }
-    showToast(msg, 'success')
-  }
-
-  return (
-    <div className="p-6 space-y-5">
-      {/* Page Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900">Attendee Engine</h1>
-          <p className="text-sm text-slate-500">
-            {attendeeList.length} attendees {events.length > 0 && `· ${events.find(e => e._id === currentEventId)?.name || 'Select Event'}`}{user.organizationName ? ` · ${user.organizationName}` : ''}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {events.length > 0 && (
-            <select
-              value={currentEventId}
-              onChange={e => setCurrentEventId(e.target.value)}
-              className="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-700 bg-white focus:border-emerald-400 outline-none"
-            >
-              {events.map(e => (
-                <option key={e._id} value={e._id}>{e.name}</option>
-              ))}
-            </select>
-          )}
-          {/* Nút Export Excel Thật */}
-          <Button variant="secondary" onClick={handleExportExcel}>
-            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
-            Export Excel
-          </Button>
-
-          {/* Nút Mở Modal Import Excel */}
-          <Button variant="secondary" onClick={() => setShowImport(true)}>
-            <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-            </svg>
-            Import Excel
-          </Button>
-          <Button variant="primary" onClick={() => showToast('Attendee added')}>+ Add Attendee</Button>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">
-            <SearchIcon />
-          </span>
-          <input
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100 outline-none"
-            placeholder="Search by name or email…"
-          />
-        </div>
-        <select className="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-700 bg-white focus:border-emerald-400 outline-none">
-          <option>All Tickets</option>
-          <option>VIP Pass</option>
-          <option>General Admission</option>
-          <option>Speaker</option>
-          <option>Press Pass</option>
-          <option>Staff</option>
-        </select>
-        <select
-          value={statusFilter}
-          onChange={e => setStatusFilter(e.target.value)}
-          className="px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-700 bg-white focus:border-emerald-400 outline-none"
-        >
-          <option>All</option>
-          <option>Registered</option>
-          <option>Checked-in</option>
-          <option>Revoked</option>
-          <option>Offline Pending</option>
-        </select>
-        {selected.length > 0 && (
-          <span className="text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">
-            {selected.length} selected
-          </span>
-        )}
-      </div>
-
-      {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-        {loading && (
-          <div className="px-5 py-10 text-center text-sm text-slate-400">Đang tải attendees...</div>
-        )}
-        {error && (
-          <div className="px-5 py-10 text-center text-sm text-red-500">{error}</div>
-        )}
-        {!loading && !error && (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-slate-50 border-b border-slate-100">
-              <th className="px-4 py-3.5 w-10">
-                <input
-                  type="checkbox"
-                  className="rounded border-slate-300"
-                  onChange={e => setSelected(e.target.checked ? filtered.map(a => Number(a.id)) : [])}
-                />
-              </th>
-              {['Full Name', 'Email', 'Ticket Type', 'QR Version', 'Status', 'Check-in Time', 'Gate', ''].map(h => (
-                <th key={h} className="px-4 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map(a => (
-              <tr key={a.id} className={`border-b border-slate-50 last:border-0 hover:bg-slate-50/60 transition-colors ${selected.includes(Number(a.id)) ? 'bg-emerald-50/30' : ''}`}>
-                <td className="px-4 py-3.5">
-                  <input type="checkbox" className="rounded border-slate-300" checked={selected.includes(Number(a.id))} onChange={() => toggleSelect(Number(a.id))} />
-                </td>
-                <td className="px-4 py-3.5 font-semibold text-slate-800">{a.name}</td>
-                <td className="px-4 py-3.5 text-slate-500 text-xs font-mono">{a.email}</td>
-                <td className="px-4 py-3.5 text-slate-600 text-xs">{a.ticket}</td>
-                <td className="px-4 py-3.5">
-                  <span className="font-mono text-xs bg-slate-100 px-2 py-0.5 rounded font-semibold text-slate-600">v{a.qrVersion}</span>
-                </td>
-                <td className="px-4 py-3.5"><StatusBadge status={a.status} /></td>
-                <td className="px-4 py-3.5 text-xs font-mono text-slate-500">{a.timestamp}</td>
-                <td className="px-4 py-3.5 text-xs text-slate-500">{a.gate}</td>
-                <td className="px-4 py-3.5">
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => setShowQR(a)} className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors" title="Inspect QR">
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                        <path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" />
-                      </svg>
-                    </button>
-                    <button onClick={() => showToast(`Manual check-in modal opened for ${a.name}`)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Manual check-in">
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                      </svg>
-                    </button>
-                    <button className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
-                      <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
-                      </svg>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {!loading && !error && filtered.length === 0 && (
-              <tr>
-                <td colSpan={9} className="px-5 py-10 text-center text-sm text-slate-400">
-                  No attendees found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-        )}
-      </div>
-
-      {/* Modals */}
-      <ImportAttendeesModal
-        open={showImport}
-        onClose={() => setShowImport(false)}
-        onImportComplete={handleImportComplete}
-      />
-
-      <QrInspectModal
-        attendee={showQR as any}
-        onClose={() => setShowQR(null)}
-        onResendEmail={email => showToast(`QR email resent to ${email}`)}
-        onRevoke={attendee => {
-          setShowQR(null)
-          showToast(`QR revoked for ${attendee.name}`, 'error')
-        }}
-      />
-
-      {toast && <Toast message={toast.msg} type={toast.type} />}
-    </div>
-  )
+  return <div className="p-6 space-y-5">
+    <div className="flex items-center justify-between"><div><h1 className="text-xl font-bold text-slate-900">Attendee Engine</h1><p className="text-sm text-slate-500">{total} attendees{user.organizationName ? ` · ${user.organizationName}` : ''}</p></div><div className="flex items-center gap-2"><select value={eventId} onChange={event => { setEventId(event.target.value); setPage(1) }} className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white">{events.map(event => <option key={event._id} value={event._id}>{event.name}</option>)}</select><Button variant="secondary" onClick={exportExcel}>Export Excel</Button><Button variant="secondary" disabled={!eventId} onClick={() => setShowImport(true)}>Import Excel</Button><Button variant="primary" disabled={!eventId} onClick={openCreate}>+ Add Attendee</Button></div></div>
+    <div className="flex items-center gap-3"><Input placeholder="Search by name or email..." value={search} onChange={value => { setSearch(value); setPage(1) }} /><select value={status} onChange={event => { setStatus(event.target.value); setPage(1) }} className="px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"><option value="">All statuses</option><option value="registered">Registered</option><option value="checked_in">Checked-in</option><option value="cancelled">Revoked</option><option value="no_show">No Show</option></select></div>
+    <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">{loading && <div className="p-10 text-center text-sm text-slate-400">Đang tải attendees...</div>}{error && <div className="p-10 text-center text-sm text-red-500">{error}</div>}{!loading && !error && <table className="w-full text-sm"><thead><tr className="bg-slate-50 border-b border-slate-100">{['Full Name', 'Email', 'Status', 'QR Version', 'Check-in Time', 'Gate', 'Actions'].map(header => <th key={header} className="px-4 py-3.5 text-left text-xs font-semibold text-slate-500 uppercase">{header}</th>)}</tr></thead><tbody>{attendees.map(item => <tr key={item._id} className="border-b border-slate-50"><td className="px-4 py-3 font-semibold text-slate-800">{item.fullName}</td><td className="px-4 py-3 text-xs text-slate-500">{item.email}</td><td className="px-4 py-3"><StatusBadge status={statusLabel(item.status) as any} /></td><td className="px-4 py-3 font-mono text-xs">v{item.qrVersion}</td><td className="px-4 py-3 text-xs text-slate-500">{item.checkIn?.checkInAt ? new Date(item.checkIn.checkInAt).toLocaleString('vi-VN') : '--'}</td><td className="px-4 py-3 text-xs text-slate-500">{item.checkIn?.gate || '--'}</td><td className="px-4 py-3"><div className="flex gap-1"><button onClick={() => openQr(item)} className="px-2 py-1 text-xs text-emerald-700 hover:bg-emerald-50 rounded">QR</button><button onClick={() => setManualTarget(item)} className="px-2 py-1 text-xs text-blue-700 hover:bg-blue-50 rounded">Check-in</button><button onClick={() => openEdit(item)} className="px-2 py-1 text-xs text-slate-700 hover:bg-slate-100 rounded">Edit</button><button onClick={() => removeAttendee(item)} className="px-2 py-1 text-xs text-red-600 hover:bg-red-50 rounded">Delete</button></div></td></tr>)}{attendees.length === 0 && <tr><td colSpan={7} className="p-10 text-center text-sm text-slate-400">No attendees found.</td></tr>}</tbody></table>}</div>
+    <div className="flex items-center justify-between text-xs text-slate-400"><span>Showing {attendees.length} of {total}</span><div className="flex gap-2"><button disabled={page <= 1} onClick={() => setPage(value => value - 1)}>Previous</button><span>{page} / {pages}</span><button disabled={page >= pages} onClick={() => setPage(value => value + 1)}>Next</button></div></div>
+    <ImportAttendeesModal open={showImport} eventId={eventId} onClose={() => setShowImport(false)} onImportComplete={async message => { notify(message); await loadAttendees() }} />
+    <ManualCheckInModal open={!!manualTarget} onClose={() => setManualTarget(null)} onConfirm={confirmManual} />
+    <QrInspectModal attendee={qrTarget ? { ...qrTarget, name: qrTarget.fullName, status: statusLabel(qrTarget.status), ticket: 'Attendee' } : null} qrDataUrl={qrDataUrl} qrLoading={qrLoading} onClose={() => setQrTarget(null)} onResendEmail={() => qrTarget && resend(qrTarget)} onRevoke={() => qrTarget && revoke(qrTarget)} />
+    <Modal open={!!formMode} onClose={closeForm} title={formMode === 'edit' ? 'Edit Attendee' : 'Add Attendee'}><div className="space-y-4"><Input label="Full name" value={name} onChange={setName} /><Input label="Email" type="email" value={email} onChange={setEmail} /><Input label="Phone" value={phone} onChange={setPhone} /><div className="flex gap-2"><Button variant="secondary" onClick={closeForm} className="flex-1">Cancel</Button><Button variant="primary" disabled={saving} onClick={saveAttendee} className="flex-1">{saving ? 'Saving...' : 'Save'}</Button></div></div></Modal>
+    {toast && <Toast message={toast.message} type={toast.type} />}
+  </div>
 }

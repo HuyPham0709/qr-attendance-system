@@ -5,6 +5,7 @@ import { AuthUser } from '../services/authService'
 import { isSuperAdmin } from '../utils/rbac'
 import { getOrganizerStats, getSystemStats } from '../services/dashboardService'
 import { listEvents } from '../services/eventService'
+import { CheckinUpdate, joinEvent } from '../services/socketService'
 
 interface DashboardScreenProps {
   user: AuthUser
@@ -63,7 +64,7 @@ export function DashboardScreen({ user }: DashboardScreenProps) {
   if (isSuperAdmin(user)) {
     return <SystemOverviewDashboard stats={stats} events={events} />
   }
-  return <OrganizerDashboard user={user} stats={stats} />
+  return <OrganizerDashboard user={user} stats={stats} events={events} />
 }
 
 function SystemOverviewDashboard({ stats, events }: { stats: any; events: any[] }) {
@@ -135,7 +136,7 @@ function SystemOverviewDashboard({ stats, events }: { stats: any; events: any[] 
                         <div>{start}</div>
                         <div className="text-slate-400">{end}</div>
                       </td>
-                      <td className="py-3 text-xs text-slate-600 max-w-[180px] truncate">{location}</td>
+                      <td className="py-3 text-xs text-slate-600 max-w-45 truncate">{location}</td>
                     </tr>
                   )
                 })}
@@ -148,15 +149,34 @@ function SystemOverviewDashboard({ stats, events }: { stats: any; events: any[] 
   )
 }
 
-function OrganizerDashboard({ user, stats }: { user: AuthUser; stats: any }) {
+function OrganizerDashboard({ user, stats, events }: { user: AuthUser; stats: any; events: any[] }) {
+  const [totalCheckedIn, setTotalCheckedIn] = useState(Number(stats.totalCheckedIn || 0))
+  const [liveStream, setLiveStream] = useState<any[]>(stats.recentActivity || [])
+  const [selectedEventId, setSelectedEventId] = useState(events[0]?._id || '')
+
+  useEffect(() => {
+    const eventId = selectedEventId
+    if (!eventId) return
+    const handleCheckin = (update: CheckinUpdate) => {
+      if (update.status === 'checked_in') setTotalCheckedIn(value => value + 1)
+      setLiveStream(current => [{
+        name: update.fullName,
+        time: new Date().toLocaleString('vi-VN'),
+        gate: update.gate || update.checkIn?.gate || '--',
+        status: update.status === 'checked_in' ? 'Checked-in' : update.status,
+      }, ...current].slice(0, 7))
+    }
+    return joinEvent(eventId, handleCheckin)
+  }, [selectedEventId])
+
   const statCards = [
     { label: 'Total Registered', value: String(stats.totalRegistered || 0), sub: 'from database', icon: '👥', color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100' },
-    { label: 'Total Checked-in', value: String(stats.totalCheckedIn || 0), sub: `attendance rate: ${stats.attendanceRate || '0%'}`, icon: '✅', color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100' },
-    { label: 'Attendance Rate', value: stats.attendanceRate || '0%', sub: 'real-time from DB', icon: '📈', color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-100' },
+    { label: 'Total Checked-in', value: String(totalCheckedIn), sub: `attendance rate: ${stats.totalRegistered ? `${Math.round(totalCheckedIn / stats.totalRegistered * 100)}%` : '0%'}`, icon: '✅', color: 'text-emerald-600', bg: 'bg-emerald-50', border: 'border-emerald-100' },
+    { label: 'Attendance Rate', value: stats.totalRegistered ? `${Math.round(totalCheckedIn / stats.totalRegistered * 100)}%` : '0%', sub: 'updated by Socket.io', icon: '📈', color: 'text-violet-600', bg: 'bg-violet-50', border: 'border-violet-100' },
     { label: 'Revoked / Issues', value: String(stats.revokedCount || 0), sub: 'revoked tickets', icon: '⚠️', color: 'text-red-600', bg: 'bg-red-50', border: 'border-red-100' },
   ]
 
-  const liveStream = (stats.recentActivity || []).map((item: any) => ({
+  const activityRows = liveStream.map((item: any) => ({
     name: item.name,
     time: item.time,
     gate: item.gate,
@@ -168,8 +188,11 @@ function OrganizerDashboard({ user, stats }: { user: AuthUser; stats: any }) {
       <div>
         <h1 className="text-xl font-bold text-slate-900">Real-time Dashboard</h1>
         <p className="text-sm text-slate-500">
-          TechSummit 2026 · Live attendance monitoring{user.organizationName ? ` · ${user.organizationName}` : ''}
+          {events.find(event => event._id === selectedEventId)?.name || 'Event'} · Live attendance monitoring{user.organizationName ? ` · ${user.organizationName}` : ''}
         </p>
+        <select value={selectedEventId} onChange={event => { setSelectedEventId(event.target.value); setLiveStream([]) }} className="mt-3 px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white">
+          {events.map(event => <option key={event._id} value={event._id}>{event.name}</option>)}
+        </select>
       </div>
 
       <div className="grid grid-cols-4 gap-4">
@@ -202,7 +225,7 @@ function OrganizerDashboard({ user, stats }: { user: AuthUser; stats: any }) {
             </tr>
           </thead>
           <tbody>
-            {liveStream.slice(0, 7).map((row: any, i: number) => (
+            {activityRows.slice(0, 7).map((row: any, i: number) => (
               <tr key={i} className={`border-b border-slate-50 last:border-0 hover:bg-slate-50/50 transition-colors ${i === 0 ? 'bg-emerald-50/40' : ''}`}>
                 <td className="px-5 py-3 font-medium text-slate-800">{row.name}</td>
                 <td className="px-5 py-3 font-mono text-xs text-slate-500">{row.time}</td>
@@ -210,7 +233,7 @@ function OrganizerDashboard({ user, stats }: { user: AuthUser; stats: any }) {
                 <td className="px-5 py-3"><StatusBadge status={row.status} /></td>
               </tr>
             ))}
-            {liveStream.length === 0 && (
+            {activityRows.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-5 py-8 text-center text-sm text-slate-400">No recent activity</td>
               </tr>
