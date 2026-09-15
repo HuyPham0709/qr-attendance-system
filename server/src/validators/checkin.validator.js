@@ -29,4 +29,23 @@ const manualCheckInSchema = z.object({
   clientTimestamp: z.coerce.date().optional()
 });
 
-module.exports = { scanCheckInSchema, manualCheckInSchema };
+// Body của POST /api/checkin/sync — Scanner PWA gửi lên khi có mạng lại sau
+// khi tích luỹ nhiều lượt quét offline (mục 2.2.B). Giới hạn max 1000 bản
+// ghi/lần để tránh 1 request đơn lẻ kẹt quá lâu (đúng lưu ý trong
+// sync.service.js: khối lượng offline thực tế chỉ vài trăm bản ghi/lần).
+const syncBatchSchema = z.object({
+  eventId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'eventId không hợp lệ'),
+  gate: z.string().trim().min(1).optional(),
+  deviceId: z.string().trim().min(1).optional(),
+  records: z
+    .array(
+      z.object({
+        token: z.string().min(1, 'Thiếu token QR'),
+        clientTimestamp: z.coerce.date().optional()
+      })
+    )
+    .min(1, 'Cần ít nhất 1 bản ghi để đồng bộ')
+    .max(1000, 'Tối đa 1000 bản ghi mỗi lần đồng bộ')
+});
+
+module.exports = { scanCheckInSchema, manualCheckInSchema, syncBatchSchema };

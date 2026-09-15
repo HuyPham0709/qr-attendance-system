@@ -26,6 +26,7 @@ function toPublicAttendee(attendee) {
     status: attendee.status,
     isCheckedIn: Boolean(attendee.checkIn?.isCheckedIn),
     checkInAt: attendee.checkIn?.checkInAt || null,
+    customFields: attendee.customFields || null,
     event: attendee.eventId && typeof attendee.eventId === 'object'
       ? {
           id: attendee.eventId._id,
@@ -50,7 +51,7 @@ function toPublicAttendee(attendee) {
  * (registerAttendeeSchema): eventId, ticketTypeId?, fullName, email, phone?.
  */
 async function registerAttendee(req, res, next) {
-  const { eventId, ticketTypeId, fullName, email, phone } = req.body;
+  const { eventId, ticketTypeId, fullName, email, phone, customFields } = req.body;
   let reservedTicketType = null; // dùng để rollback $inc nếu tạo Attendee thất bại phía sau
 
   try {
@@ -101,7 +102,8 @@ async function registerAttendee(req, res, next) {
         ticketTypeId: reservedTicketType ? reservedTicketType._id : undefined,
         fullName,
         email,
-        phone
+        phone,
+        customFields
       });
     } catch (err) {
       // Rollback phần vé đã giữ chỗ ở bước trên nếu tạo attendee thất bại,

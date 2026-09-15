@@ -17,7 +17,19 @@ const registerAttendeeSchema = z.object({
     .trim()
     .regex(/^[0-9+()\-.\s]{8,20}$/, 'Số điện thoại không hợp lệ')
     .optional()
-    .or(z.literal('').transform(() => undefined))
+    .or(z.literal('').transform(() => undefined)),
+  // Khớp field `customFields: Mixed` trong Attendee.model.js (mục 5.5 spec).
+  // Giới hạn rõ 2 key biết trước (tshirtSize, organization) thay vì
+  // z.any() tự do — tránh client nhét field tuỳ ý vào Mixed không kiểm
+  // soát được. Nếu sau này cần thêm field tuỳ biến theo event, nới lỏng
+  // ở đây và validate độ dài/kiểu cho từng key mới.
+  customFields: z
+    .object({
+      tshirtSize: z.enum(['XS', 'S', 'M', 'L', 'XL', 'XXL']).optional(),
+      organization: z.string().trim().max(160).optional()
+    })
+    .partial()
+    .optional()
 });
 
 const lookupTicketsSchema = z.object({

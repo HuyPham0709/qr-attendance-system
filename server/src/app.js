@@ -11,6 +11,7 @@ const organizationRoutes = require('./routes/organization.routes');
 const userRoutes = require('./routes/user.routes');
 const checkinLogRoutes = require('./routes/checkinLog.routes');
 const dashboardRoutes = require('./routes/dashboard.routes');
+const announcementRoutes = require('./routes/announcement.routes');
 const { errorHandler } = require('./middlewares/errorHandler.middleware');
 
 const app = express();
@@ -83,6 +84,7 @@ app.use('/api/organizations', organizationRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/checkin/logs', checkinLogRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/announcements', announcementRoutes);
 
 // Middleware xử lý lỗi tập trung — PHẢI mount SAU cùng, sau mọi route.
 app.use(errorHandler);

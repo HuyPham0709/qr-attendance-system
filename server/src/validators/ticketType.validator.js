@@ -10,6 +10,8 @@ const createTicketTypeSchema = z.object({
   name: z.string().trim().min(1, 'Tên loại vé không được để trống'),
   quantityLimit: z.number().positive('Số lượng tối đa phải > 0').optional(),
   price: z.number().min(0, 'Giá không được âm').optional(),
+  description: z.string().trim().optional(),
+  perks: z.array(z.string().trim()).optional(),
   allowedSessions: z.array(z.string()).optional()
 });
 

@@ -1,9 +1,10 @@
 // server/src/routes/checkin.routes.js
 const express = require('express');
 const { scanCheckIn, manualCheckIn } = require('../controllers/checkin.controller');
+const { syncBatch } = require('../controllers/sync.controller');
 const { authenticate, authorize } = require('../middlewares/auth.middleware');
 const { validate } = require('../middlewares/validate.middleware');
-const { scanCheckInSchema, manualCheckInSchema } = require('../validators/checkin.validator');
+const { scanCheckInSchema, manualCheckInSchema, syncBatchSchema } = require('../validators/checkin.validator');
 const { scanRateLimiter } = require('../middlewares/rateLimiter.middleware');
 
 const router = express.Router();
@@ -33,6 +34,19 @@ router.post(
   authorize('scanner_staff', 'organizer', 'super_admin'),
   validate(manualCheckInSchema),
   manualCheckIn
+);
+
+// Không cần rate limiter riêng như /scan: đây là request 1 lần/lượt đồng bộ
+// (không phải brute-force đoán token — token trong batch đều do chính máy
+// Scanner đó tự quét ra lúc offline), và vẫn nằm sau authenticate +
+// assignedEvents (ensureEventAccess trong sync.controller.js) như 2 route
+// trên.
+router.post(
+  '/sync',
+  authenticate,
+  authorize('scanner_staff', 'organizer', 'super_admin'),
+  validate(syncBatchSchema),
+  syncBatch
 );
 
 module.exports = router;

@@ -11,6 +11,10 @@ const ticketTypeSchema = new mongoose.Schema({
   // quantityLimit === null nghĩa là KHÔNG giới hạn -> bỏ qua điều kiện $expr.
   quantitySold: { type: Number, default: 0 },
   price: { type: Number, default: 0 },
+  // Mo ta ngan + danh sach quyen loi hien thi tren the chon ve o trang
+  // dat ve public (client-attendee). Optional, khong anh huong logic cu.
+  description: String,
+  perks: { type: [String], default: [] },
   allowedSessions: [String]
 }, { timestamps: true });
 

@@ -6,6 +6,25 @@ const eventSchema = new mongoose.Schema({
   slug: { type: String, unique: true },
   description: String,
   banner: String,
+  // --- Noi dung mo rong cho trang chi tiet/dat ve public (client-attendee) ---
+  // Tat ca optional -> event cu (khong co field nay) van hoat dong binh
+  // thuong, trang attendee tu an phan section tuong ung neu rong/thieu.
+  gallery: { type: [String], default: [] }, // them anh su kien ngoai banner chinh
+  highlights: { type: [String], default: [] }, // diem noi bat, hien thi dang the ngan
+  agenda: {
+    type: [{
+      time: String, // vi du "09:00" hoac "09:00 - 09:30"
+      title: { type: String, required: true },
+      description: String
+    }],
+    default: []
+  },
+  organizerInfo: {
+    name: String,
+    logo: String,
+    description: String
+  },
+  tags: { type: [String], default: [] }, // vi du "Cong nghe", "Mien phi", "Online"
   location: {
     address: String,
     geo: { lat: Number, lng: Number },

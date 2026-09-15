@@ -27,11 +27,28 @@ const gateSchema = z.object({
   code: z.string().trim().min(1, 'Mã cổng không được để trống').optional()
 });
 
+const agendaItemSchema = z.object({
+  time: z.string().trim().optional(),
+  title: z.string().trim().min(1, 'Tiêu đề mục lịch trình không được để trống'),
+  description: z.string().trim().optional()
+});
+
+const organizerInfoSchema = z.object({
+  name: z.string().trim().optional(),
+  logo: z.string().trim().optional(),
+  description: z.string().trim().optional()
+}).optional();
+
 const eventBaseSchema = z.object({
   name: z.string().trim().min(1, 'Tên sự kiện không được để trống'),
   slug: z.string().trim().min(1).optional(),
   description: z.string().trim().optional(),
   banner: z.string().trim().optional(),
+  gallery: z.array(z.string().trim()).optional(),
+  highlights: z.array(z.string().trim()).optional(),
+  agenda: z.array(agendaItemSchema).optional(),
+  organizerInfo: organizerInfoSchema,
+  tags: z.array(z.string().trim()).optional(),
   location: locationSchema,
   startAt: z.coerce.date().refine((d) => d > new Date(), 'Thời gian bắt đầu phải là tương lai'),
   endAt: z.coerce.date().optional(),
