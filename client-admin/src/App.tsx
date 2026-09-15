@@ -52,10 +52,10 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-[#F8FAFC] overflow-hidden">
+    <div className="flex h-screen bg-slate-50 overflow-hidden">
       <Sidebar screen={safeScreen} onNavigate={handleNavigate} user={user} onLogout={handleLogout} />
       <div className="flex-1 flex flex-col min-w-0">
-        <TopBar />
+        <TopBar user={user} />
         <main className="flex-1 overflow-y-auto">
           {safeScreen === 'dashboard' && <DashboardScreen user={user} />}
           {safeScreen === 'events' && <EventsScreen user={user} />}

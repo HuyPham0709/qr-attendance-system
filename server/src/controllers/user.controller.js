@@ -14,7 +14,7 @@ async function listUsers(req, res, next) {
     const skip = (page - 1) * limit;
     const { role, search } = req.query;
 
-    const filter = {};
+    const filter = { isActive: { $ne: false } };
 
     if (req.user.role === 'organizer') {
       filter.organizationId = req.user.organizationId;
@@ -164,8 +164,8 @@ async function deleteUser(req, res, next) {
       return fail(res, 403, 'Bạn không có quyền xóa user này', 'FORBIDDEN');
     }
 
-    await User.findByIdAndDelete(id);
-    return ok(res, { message: 'User đã được xóa' });
+    await User.findByIdAndUpdate(id, { isActive: false });
+    return ok(res, { message: 'User đã được vô hiệu hóa' });
   } catch (err) {
     next(err);
   }

@@ -17,7 +17,7 @@ async function getOrganizerStats(req, res, next) {
       return fail(res, 404, 'Không tìm thấy tổ chức', 'ORGANIZATION_NOT_FOUND');
     }
 
-    const orgEvents = await Event.find({ organizationId: orgId }).distinct('_id');
+    const orgEvents = await Event.find({ organizationId: orgId, status: { $ne: 'cancelled' } }).distinct('_id');
 
     const [
       totalRegistered,
@@ -65,8 +65,8 @@ async function getSystemStats(req, res, next) {
       lockedOrgs,
       activeOrgs
     ] = await Promise.all([
-      Organization.countDocuments(),
-      Event.countDocuments(),
+      Organization.countDocuments({ isActive: { $ne: false } }),
+      Event.countDocuments({ status: { $ne: 'cancelled' } }),
       Organization.countDocuments({ status: 'pending' }),
       Organization.countDocuments({ status: 'locked' }),
       Organization.countDocuments({ status: 'active' })

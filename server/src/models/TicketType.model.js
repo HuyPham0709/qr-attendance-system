@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const ticketTypeSchema = new mongoose.Schema({
   eventId: { type: mongoose.Schema.Types.ObjectId, ref: 'Event', required: true, index: true },
   name: { type: String, required: true },
+  isActive: { type: Boolean, default: true, index: true },
   quantityLimit: { type: Number, default: null },
   // Số vé đã phát ra cho loại vé này (self-registration của Attendee +
   // Organizer tạo thủ công/import đều phải tăng field này). Bắt buộc để

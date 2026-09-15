@@ -47,7 +47,7 @@ async function listTicketTypes(req, res, next) {
     const limit = Math.min(100, parseInt(req.query.limit) || 10);
     const skip = (page - 1) * limit;
 
-    const filter = {};
+    const filter = { isActive: { $ne: false } };
 
     if (eventId) {
       if (!mongoose.Types.ObjectId.isValid(eventId)) {
@@ -94,7 +94,7 @@ async function getTicketTypeById(req, res, next) {
       return fail(res, 400, 'Ticket Type ID không hợp lệ', 'INVALID_ID');
     }
 
-    const ticketType = await TicketType.findById(id).populate('eventId', 'name organizationId').lean();
+    const ticketType = await TicketType.findOne({ _id: id, isActive: { $ne: false } }).populate('eventId', 'name organizationId').lean();
     if (!ticketType) {
       return fail(res, 404, 'Không tìm thấy loại vé', 'TICKET_TYPE_NOT_FOUND');
     }
@@ -168,8 +168,8 @@ async function deleteTicketTypeById(req, res, next) {
       return fail(res, 403, 'Bạn không có quyền xóa vé này', 'FORBIDDEN');
     }
 
-    await TicketType.findByIdAndDelete(id);
-    return ok(res, { message: 'Loại vé đã được xóa' });
+    await TicketType.findByIdAndUpdate(id, { isActive: false });
+    return ok(res, { message: 'Loại vé đã được vô hiệu hóa' });
   } catch (err) {
     next(err);
   }

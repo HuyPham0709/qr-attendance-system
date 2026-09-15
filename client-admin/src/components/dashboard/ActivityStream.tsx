@@ -1,6 +1,6 @@
 import React from 'react'
 import { Button } from '../ui/Button'
-import { StatusBadge } from '../ui/StatusBadge'
+import { StatusBadge } from '../ui/Badges'
 import { StatusBadgeType } from '../../types'
 
 interface ActivityRow {

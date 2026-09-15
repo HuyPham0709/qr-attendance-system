@@ -3,17 +3,20 @@ import * as XLSX from 'xlsx'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { AttendeeItem } from '../../types'
+import { importAttendees } from '../../services'
 
 interface ImportAttendeesModalProps {
   open: boolean
   onClose: () => void
   onImportComplete: (msg: string, importedAttendees: AttendeeItem[]) => void
+  eventId?: string
 }
 
-export function ImportAttendeesModal({ open, onClose, onImportComplete }: ImportAttendeesModalProps) {
+export function ImportAttendeesModal({ open, onClose, onImportComplete, eventId }: ImportAttendeesModalProps) {
   const [file, setFile] = useState<File | null>(null)
   const [previewData, setPreviewData] = useState<AttendeeItem[]>([])
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
 
   // Xử lý đọc file Excel và parse dữ liệu
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -65,16 +68,31 @@ export function ImportAttendeesModal({ open, onClose, onImportComplete }: Import
     reader.readAsBinaryString(selectedFile)
   }
 
-  const handleConfirmImport = () => {
-    if (!previewData.length) return
+  const handleConfirmImport = async () => {
+    if (!previewData.length || !file || !eventId) return
     setLoading(true)
+    setError('')
 
-    setTimeout(() => {
-      onImportComplete(`Đã nhập thành công ${previewData.length} người tham dự!`, previewData)
+    try {
+      const result = await importAttendees(eventId, file)
+      const mapped = result.data.map((a: any) => ({
+        id: a._id,
+        name: a.fullName,
+        email: a.email,
+        ticket: a.ticketTypeId?.name || 'General Admission',
+        qrVersion: a.qrVersion,
+        status: a.status === 'checked_in' ? 'Checked-in' : a.status === 'cancelled' ? 'Revoked' : a.status === 'no_show' ? 'No Show' : 'Registered',
+        timestamp: a.checkIn?.checkInAt ? new Date(a.checkIn.checkInAt).toLocaleString('vi-VN') : '--',
+        gate: a.checkIn?.gate || '--'
+      }))
+      onImportComplete(`Đã nhập thành công ${result.imported}/${result.imported + result.failed} người tham dự!`, mapped as any)
       handleReset()
-      setLoading(false)
       onClose()
-    }, 500)
+    } catch (err: any) {
+      setError(err.message || 'Import thất bại')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const handleReset = () => {
@@ -135,6 +153,12 @@ export function ImportAttendeesModal({ open, onClose, onImportComplete }: Import
           </div>
         )}
 
+        {error && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-600">
+            {error}
+          </div>
+        )}
+
         <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
           <Button variant="secondary" onClick={() => { handleReset(); onClose(); }}>
             Hủy
@@ -142,7 +166,7 @@ export function ImportAttendeesModal({ open, onClose, onImportComplete }: Import
           <Button
             variant="primary"
             onClick={handleConfirmImport}
-            disabled={!previewData.length || loading}
+            disabled={!previewData.length || loading || !eventId}
           >
             {loading ? 'Đang xử lý...' : 'Xác nhận Import'}
           </Button>
